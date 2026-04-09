@@ -1,79 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId} (Firebase Auth UID)
-    // Fields:
-    //   - firstName: string (required, 1-50 chars)
-    //   - lastName: string (required, 1-50 chars)
-    //   - idNumber: string (required, 1-20 chars)
-    //   - phone: string (required, 1-20 chars)
-    //   - birthDate: string (required, ISO 8601 format)
-    //   - email: string (optional, email format)
-    //   - createdAt: timestamp (required, immutable)
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidDateString(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}.*$");
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    // Domain Validator for User
-    function isValidUser(data) {
-      return hasRequiredFields(['firstName', 'lastName', 'idNumber', 'phone', 'birthDate', 'createdAt']) &&
-             hasOnlyAllowedFields(['firstName', 'lastName', 'idNumber', 'phone', 'birthDate', 'email', 'createdAt']) &&
-             data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 50 &&
-             data.lastName is string && data.lastName.size() >= 1 && data.lastName.size() <= 50 &&
-             data.idNumber is string && data.idNumber.size() >= 1 && data.idNumber.size() <= 20 &&
-             data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 20 &&
-             isValidDateString(data.birthDate) &&
-             (!('email' in data) || isValidEmail(data.email)) &&
-             data.createdAt is timestamp;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) &&
-                      request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if false; // Users cannot delete their profiles for now
-    }
+      allow read, write: if request.auth != null && request.auth.uid == userId;
 
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
+      match /sales/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /expenses/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /debts/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }

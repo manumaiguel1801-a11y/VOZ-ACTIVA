@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Chat } from './Chat';
 
-export const ChatBubble = ({ isDarkMode }: { isDarkMode: boolean }) => {
+export const ChatBubble = ({ isDarkMode, userId }: { isDarkMode: boolean; userId: string }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -50,7 +50,7 @@ export const ChatBubble = ({ isDarkMode }: { isDarkMode: boolean }) => {
               </div>
               
               <div className="flex-1 overflow-hidden px-2">
-                <Chat isDarkMode={isDarkMode} />
+                <Chat isDarkMode={isDarkMode} userId={userId} />
               </div>
             </div>
           </motion.div>

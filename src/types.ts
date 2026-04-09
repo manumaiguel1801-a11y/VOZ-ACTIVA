@@ -12,6 +12,31 @@ export interface Transaction {
   color: string;
 }
 
+export interface Sale {
+  id: string;
+  product: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  createdAt: any;
+}
+
+export interface Expense {
+  id: string;
+  concept: string;
+  amount: number;
+  createdAt: any;
+}
+
+export interface Debt {
+  id: string;
+  name: string;      // nombre del deudor o acreedor
+  concept: string;
+  amount: number;
+  type: 'me-deben' | 'debo';
+  createdAt: any;
+}
+
 export interface UserProfile {
   firstName: string;
   lastName: string;

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Tab, UserProfile } from './types';
+import { Tab, UserProfile, Sale, Expense, Debt } from './types';
 
-// Components
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { FinanceView } from './components/FinanceView';
@@ -18,6 +17,9 @@ import { Auth } from './components/Auth';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('inicio');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -29,26 +31,50 @@ export default function App() {
       setUser(currentUser);
       if (!currentUser) {
         setProfile(null);
+        setSales([]);
+        setExpenses([]);
+        setDebts([]);
         setLoading(false);
       }
     });
     return () => unsubscribe();
   }, []);
 
+  // Profile
   useEffect(() => {
     if (!user) return;
-
-    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
-      }
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if (snap.exists()) setProfile(snap.data() as UserProfile);
       setLoading(false);
-    }, (error) => {
-      console.error("Error fetching profile:", error);
-      setLoading(false);
-    });
+    }, (err) => { console.error(err); setLoading(false); });
+    return unsub;
+  }, [user]);
 
-    return () => unsubscribe();
+  // Sales
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'users', user.uid, 'sales'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
+    }, console.error);
+  }, [user]);
+
+  // Expenses
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'users', user.uid, 'expenses'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
+    }, console.error);
+  }, [user]);
+
+  // Debts
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'users', user.uid, 'debts'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      setDebts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Debt)));
+    }, console.error);
   }, [user]);
 
   if (loading) {
@@ -59,37 +85,36 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Auth isDarkMode={isDarkMode} />;
-  }
+  if (!user) return <Auth isDarkMode={isDarkMode} />;
 
   return (
-    <Layout 
-      activeTab={activeTab} 
+    <Layout
+      activeTab={activeTab}
       setActiveTab={setActiveTab}
       isDarkMode={isDarkMode}
       toggleDarkMode={toggleDarkMode}
       userName={profile ? `Hola, ${profile.firstName}` : 'Bienvenido'}
+      userId={user.uid}
     >
       <AnimatePresence mode="wait">
         {activeTab === 'inicio' && (
           <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <Dashboard isDarkMode={isDarkMode} />
+            <Dashboard isDarkMode={isDarkMode} userId={user.uid} sales={sales} expenses={expenses} />
           </motion.div>
         )}
         {activeTab === 'finanzas' && (
           <motion.div key="finanzas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <FinanceView isDarkMode={isDarkMode} />
+            <FinanceView isDarkMode={isDarkMode} sales={sales} expenses={expenses} />
           </motion.div>
         )}
         {activeTab === 'camara' && (
           <motion.div key="camera" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <CameraView isDarkMode={isDarkMode} />
+            <CameraView isDarkMode={isDarkMode} debts={debts} />
           </motion.div>
         )}
         {activeTab === 'inventario' && (
           <motion.div key="inventario" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <InventorySalesView isDarkMode={isDarkMode} />
+            <InventorySalesView isDarkMode={isDarkMode} sales={sales} />
           </motion.div>
         )}
         {activeTab === 'pasaporte' && (
@@ -99,10 +124,10 @@ export default function App() {
         )}
         {activeTab === 'perfil' && profile && (
           <motion.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <ProfileView 
-              isDarkMode={isDarkMode} 
-              profile={profile} 
-              onUpdate={(updated) => setProfile({ ...profile, ...updated })} 
+            <ProfileView
+              isDarkMode={isDarkMode}
+              profile={profile}
+              onUpdate={(updated) => setProfile({ ...profile, ...updated })}
             />
           </motion.div>
         )}

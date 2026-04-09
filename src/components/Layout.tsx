@@ -23,15 +23,17 @@ interface LayoutProps {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
   userName?: string;
+  userId: string;
 }
 
-export const Layout = ({ 
-  children, 
-  activeTab, 
-  setActiveTab, 
-  isDarkMode, 
+export const Layout = ({
+  children,
+  activeTab,
+  setActiveTab,
+  isDarkMode,
   toggleDarkMode,
-  userName = 'Bienvenido'
+  userName = 'Bienvenido',
+  userId
 }: LayoutProps) => {
   const [showManual, setShowManual] = React.useState(false);
 
@@ -113,7 +115,7 @@ export const Layout = ({
       </main>
 
       {/* Floating Chat Bubble */}
-      <ChatBubble isDarkMode={isDarkMode} />
+      <ChatBubble isDarkMode={isDarkMode} userId={userId} />
 
       {/* Bottom Nav */}
       <nav className={cn(
