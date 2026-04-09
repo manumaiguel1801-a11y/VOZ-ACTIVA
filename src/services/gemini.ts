@@ -6,6 +6,8 @@ export interface ChatResponse {
     type: 'venta' | 'gasto' | 'deuda-me-deben' | 'deuda-debo';
     amount: number;
     concept: string;
+    quantity?: number;
+    unitPrice?: number;
     debtorName?: string;
   };
 }
@@ -25,6 +27,12 @@ TIPOS DE MOVIMIENTO QUE DEBES DETECTAR:
 
 REGLAS DE EXTRACCIÓN:
 - Extrae el monto numérico siempre. "20 barras", "20 lucas", "20 mil" = 20000.
+- Para ventas con cantidad y precio unitario (ej: "vendí 200 panelas a 500", "3 almuerzos a 15 mil"):
+  * "concept" debe ser SOLO el nombre del producto, SIN la cantidad. Ej: "panelas", "almuerzos".
+  * "quantity" = la cantidad de unidades vendidas.
+  * "unitPrice" = el precio por unidad (en pesos).
+  * "amount" = quantity × unitPrice (el total de la venta).
+- Si solo se menciona un total sin desglose (ej: "vendí 50 mil"), pon quantity=1, unitPrice=amount.
 - Para deudas, extrae el nombre de la persona/entidad en "debtorName" si se menciona.
 - Si no hay datos financieros que registrar, omite el campo "data".
 - Si el usuario solo saluda o pregunta algo general, responde normalmente sin "data".
@@ -34,8 +42,10 @@ FORMATO DE RESPUESTA (JSON estricto):
   "message": "Tu respuesta textual",
   "data": {
     "type": "venta" | "gasto" | "deuda-me-deben" | "deuda-debo",
-    "amount": número,
-    "concept": "descripción breve",
+    "amount": número (total),
+    "concept": "nombre del producto o concepto SIN cantidad",
+    "quantity": número (unidades, solo para ventas),
+    "unitPrice": número (precio unitario, solo para ventas),
     "debtorName": "nombre (solo para deudas)"
   }
 }`;
@@ -62,6 +72,8 @@ const SCHEMA_CONFIG = {
           type: { type: Type.STRING, enum: ['venta', 'gasto', 'deuda-me-deben', 'deuda-debo'] },
           amount: { type: Type.NUMBER },
           concept: { type: Type.STRING },
+          quantity: { type: Type.NUMBER },
+          unitPrice: { type: Type.NUMBER },
           debtorName: { type: Type.STRING },
         },
         required: ['type', 'amount', 'concept'],
