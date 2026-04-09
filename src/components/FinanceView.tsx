@@ -1,13 +1,17 @@
-import React, { useMemo } from 'react';
-import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
+import { MovementDetailModal } from './MovementDetailModal';
 
 const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
+}
+function getExpenseDate(e: Expense): Date {
+  return e.createdAt?.toDate ? e.createdAt.toDate() : new Date();
 }
 
 function formatRelativeTime(date: Date): string {
@@ -28,6 +32,8 @@ interface Props {
 }
 
 export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   // Month totals
   const { monthIncome, monthExpenses } = useMemo(() => {
     const now = new Date();
@@ -146,32 +152,60 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Sales */}
             {sales.map((s) => (
-              <div
+              <button
                 key={s.id}
-                className={cn('p-5 rounded-2xl flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-500', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white')}
+                onClick={() => setSelectedSale(s)}
+                className={cn('w-full p-4 rounded-2xl flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white')}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d]">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
                     <ShoppingBag className="w-5 h-5" />
                   </div>
-                  <div>
-                    <p className="font-bold text-sm">{getSaleLabel(s)}</p>
-                    <p className="text-[10px] opacity-50">
-                      {formatRelativeTime(getSaleDate(s))}
-                      {getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm truncate">{getSaleLabel(s)}</p>
+                    <p className="text-[10px] opacity-50">{formatRelativeTime(getSaleDate(s))}{getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-black text-lg text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
-                  <span className="text-[8px] font-bold uppercase tracking-tighter opacity-30">Confirmado</span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <p className="font-black text-base text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
+                  <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                 </div>
-              </div>
+              </button>
+            ))}
+            {/* Expenses */}
+            {expenses.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedExpense(e)}
+                className={cn('w-full p-4 rounded-2xl flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn('w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0', isDarkMode ? 'bg-red-500/20' : 'bg-red-50')}>
+                    <TrendingDown className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm truncate">{e.concept}</p>
+                    <p className="text-[10px] opacity-50">{formatRelativeTime(getExpenseDate(e))}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <p className="font-black text-base text-red-500">-${e.amount.toLocaleString('es-CO')}</p>
+                  <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+                </div>
+              </button>
             ))}
           </div>
         )}
       </section>
+
+      {selectedSale && (
+        <MovementDetailModal item={{ kind: 'sale', data: selectedSale }} isDarkMode={isDarkMode} onClose={() => setSelectedSale(null)} />
+      )}
+      {selectedExpense && (
+        <MovementDetailModal item={{ kind: 'expense', data: selectedExpense }} isDarkMode={isDarkMode} onClose={() => setSelectedExpense(null)} />
+      )}
     </div>
   );
 };
