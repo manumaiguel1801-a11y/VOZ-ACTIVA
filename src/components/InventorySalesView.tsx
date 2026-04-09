@@ -4,7 +4,7 @@ import {
   TrendingUp, Box, History, ArrowUpRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Sale } from '../types';
+import { Sale, getSaleLabel, getSaleQtyLabel } from '../types';
 
 interface InventoryItem {
   id: string;
@@ -176,10 +176,10 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
                   <ShoppingBag className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="font-bold">{sale.product}</p>
+                  <p className="font-bold">{getSaleLabel(sale)}</p>
                   <p className="text-xs opacity-50">
                     {formatRelativeTime(getSaleDate(sale))}
-                    {sale.quantity > 1 && ` · Cant: ${sale.quantity}`}
+                    {getSaleQtyLabel(sale) && ` · ${getSaleQtyLabel(sale)}`}
                   </p>
                 </div>
               </div>

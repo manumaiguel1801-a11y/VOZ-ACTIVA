@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
-import { Sale, Expense } from '../types';
+import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
 
 const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
@@ -156,10 +156,10 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
                     <ShoppingBag className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-sm">{s.product}</p>
+                    <p className="font-bold text-sm">{getSaleLabel(s)}</p>
                     <p className="text-[10px] opacity-50">
                       {formatRelativeTime(getSaleDate(s))}
-                      {s.quantity > 1 && ` · ×${s.quantity}`}
+                      {getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}
                     </p>
                   </div>
                 </div>

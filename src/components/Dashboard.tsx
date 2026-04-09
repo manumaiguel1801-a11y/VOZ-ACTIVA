@@ -2,8 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Plus, ShoppingBag, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
-import { Sale, Expense } from '../types';
+import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
 import { RegisterSaleModal } from './RegisterSaleModal';
+import { AllMovementsModal } from './AllMovementsModal';
 
 type TimeFilter = '1d' | '2d' | '7d' | '30d';
 
@@ -51,6 +52,7 @@ interface Props {
 export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('1d');
   const [showModal, setShowModal] = useState(false);
+  const [showAllMovements, setShowAllMovements] = useState(false);
 
   // Totals
   const { todayIncome, todayExpenses, totalBalance } = useMemo(() => {
@@ -186,7 +188,10 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
         <section className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold">Movimientos recientes</h3>
-            <button className="text-[#B8860B] font-bold text-sm">Ver todo</button>
+            <button
+            onClick={() => setShowAllMovements(true)}
+            className="text-[#B8860B] font-bold text-sm"
+          >Ver todo</button>
           </div>
 
           {/* Time filter pills */}
@@ -242,10 +247,10 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                       <ShoppingBag className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="font-bold">{s.product}</p>
+                      <p className="font-bold">{getSaleLabel(s)}</p>
                       <p className={cn('text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
                         {formatRelativeTime(getSaleDate(s))}
-                        {s.quantity > 1 && ` · ×${s.quantity}`}
+                        {getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}
                       </p>
                     </div>
                   </div>
@@ -264,6 +269,15 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
           userId={userId}
           isDarkMode={isDarkMode}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {showAllMovements && (
+        <AllMovementsModal
+          isDarkMode={isDarkMode}
+          sales={sales}
+          expenses={expenses}
+          onClose={() => setShowAllMovements(false)}
         />
       )}
     </>
