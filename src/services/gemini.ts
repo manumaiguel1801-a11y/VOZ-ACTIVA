@@ -44,7 +44,7 @@ FORMATO DE RESPUESTA (JSON estricto):
 const MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
 
 function getClient() {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY no está configurada');
   return new GoogleGenAI({ apiKey });
 }

@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ShoppingBag, BarChart2 } from 'lucide-react';
+import { Plus, ShoppingBag, BarChart2, TrendingDown, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
 import { RegisterSaleModal } from './RegisterSaleModal';
+import { RegisterExpenseModal } from './RegisterExpenseModal';
 import { AllMovementsModal } from './AllMovementsModal';
+import { MovementDetailModal } from './MovementDetailModal';
 
 type TimeFilter = '1d' | '2d' | '7d' | '30d';
 
@@ -51,8 +53,11 @@ interface Props {
 
 export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('1d');
-  const [showModal, setShowModal] = useState(false);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showAllMovements, setShowAllMovements] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
 
   // Totals
   const { todayIncome, todayExpenses, totalBalance } = useMemo(() => {
@@ -131,14 +136,28 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#DAA520] rounded-full blur-[80px] opacity-40" />
         </section>
 
-        {/* CTA */}
-        <button
-          onClick={() => setShowModal(true)}
-          className="w-full h-16 bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black rounded-xl font-bold text-lg flex items-center justify-center gap-3 shadow-lg active:scale-[0.98] transition-transform"
-        >
-          <Plus className="w-6 h-6" />
-          Registrar Venta
-        </button>
+        {/* CTAs */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowSaleModal(true)}
+            className="flex-1 h-16 bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <Plus className="w-5 h-5" />
+            Registrar Venta
+          </button>
+          <button
+            onClick={() => setShowExpenseModal(true)}
+            className={cn(
+              'flex-1 h-16 rounded-xl font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform border-2',
+              isDarkMode
+                ? 'bg-[#1A1A1A] border-red-500/30 text-red-400'
+                : 'bg-white border-red-200 text-red-500 shadow-sm'
+            )}
+          >
+            <TrendingDown className="w-5 h-5" />
+            Registrar Gasto
+          </button>
+        </div>
 
         {/* Weekly Chart */}
         <section className={cn(
@@ -235,49 +254,62 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
           ) : (
             <div className="space-y-3">
               {filteredSales.map((s) => (
-                <div
+                <button
                   key={s.id}
+                  onClick={() => setSelectedSale(s)}
                   className={cn(
-                    'p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200',
+                    'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
                     isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
                   )}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d]">
+                    <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
                       <ShoppingBag className="w-6 h-6" />
                     </div>
-                    <div>
-                      <p className="font-bold">{getSaleLabel(s)}</p>
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{getSaleLabel(s)}</p>
                       <p className={cn('text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
                         {formatRelativeTime(getSaleDate(s))}
                         {getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}
                       </p>
                     </div>
                   </div>
-                  <p className="font-bold text-[#B8860B]">
-                    +${s.total.toLocaleString('es-CO')}
-                  </p>
-                </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <p className="font-bold text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
+                    <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+                  </div>
+                </button>
               ))}
             </div>
           )}
         </section>
       </div>
 
-      {showModal && (
-        <RegisterSaleModal
-          userId={userId}
-          isDarkMode={isDarkMode}
-          onClose={() => setShowModal(false)}
-        />
+      {showSaleModal && (
+        <RegisterSaleModal userId={userId} isDarkMode={isDarkMode} onClose={() => setShowSaleModal(false)} />
+      )}
+
+      {showExpenseModal && (
+        <RegisterExpenseModal userId={userId} isDarkMode={isDarkMode} onClose={() => setShowExpenseModal(false)} />
       )}
 
       {showAllMovements && (
-        <AllMovementsModal
+        <AllMovementsModal isDarkMode={isDarkMode} sales={sales} expenses={expenses} onClose={() => setShowAllMovements(false)} />
+      )}
+
+      {selectedSale && (
+        <MovementDetailModal
+          item={{ kind: 'sale', data: selectedSale }}
           isDarkMode={isDarkMode}
-          sales={sales}
-          expenses={expenses}
-          onClose={() => setShowAllMovements(false)}
+          onClose={() => setSelectedSale(null)}
+        />
+      )}
+
+      {selectedExpense && (
+        <MovementDetailModal
+          item={{ kind: 'expense', data: selectedExpense }}
+          isDarkMode={isDarkMode}
+          onClose={() => setSelectedExpense(null)}
         />
       )}
     </>

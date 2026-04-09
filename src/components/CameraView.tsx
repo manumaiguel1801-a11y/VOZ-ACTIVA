@@ -6,10 +6,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   UserPlus,
-  Users
+  Users,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Debt } from '../types';
+import { MovementDetailModal } from './MovementDetailModal';
 
 function getDebtDate(debt: Debt): Date {
   return debt.createdAt?.toDate ? debt.createdAt.toDate() : new Date();
@@ -32,6 +34,7 @@ interface Props {
 
 export const CameraView = ({ isDarkMode, debts }: Props) => {
   const [debtType, setDebtType] = useState<'me-deben' | 'debo'>('me-deben');
+  const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
 
   const filteredDebts = debts.filter((d) => d.type === debtType);
 
@@ -142,10 +145,11 @@ export const CameraView = ({ isDarkMode, debts }: Props) => {
             </div>
           ) : (
             filteredDebts.map((item) => (
-              <div
+              <button
                 key={item.id}
+                onClick={() => setSelectedDebt(item)}
                 className={cn(
-                  'p-5 rounded-2xl flex items-center justify-between shadow-sm border-l-4 transition-all duration-500',
+                  'w-full p-5 rounded-2xl flex items-center justify-between shadow-sm border-l-4 transition-all duration-200 active:scale-[0.98] text-left',
                   isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white',
                   item.type === 'me-deben' ? 'border-[#B8860B]' : 'border-red-500/50'
                 )}
@@ -154,18 +158,21 @@ export const CameraView = ({ isDarkMode, debts }: Props) => {
                   <p className="font-bold text-lg">{item.name}</p>
                   <p className="text-xs opacity-40">{item.concept} · {formatRelativeDate(getDebtDate(item))}</p>
                 </div>
-                <div className="text-right">
-                  <p className={cn('font-black text-xl', item.type === 'me-deben' ? 'text-[#B8860B]' : 'opacity-70')}>
-                    ${item.amount.toLocaleString('es-CO')}
-                  </p>
-                  <span className={cn(
-                    'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase',
-                    isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#483000]'
-                  )}>
-                    {item.type === 'me-deben' ? 'A COBRAR' : 'A PAGAR'}
-                  </span>
+                <div className="flex items-center gap-1">
+                  <div className="text-right">
+                    <p className={cn('font-black text-xl', item.type === 'me-deben' ? 'text-[#B8860B]' : 'opacity-70')}>
+                      ${item.amount.toLocaleString('es-CO')}
+                    </p>
+                    <span className={cn(
+                      'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase',
+                      isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#483000]'
+                    )}>
+                      {item.type === 'me-deben' ? 'A COBRAR' : 'A PAGAR'}
+                    </span>
+                  </div>
+                  <ChevronRight className={cn('w-4 h-4 flex-shrink-0', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                 </div>
-              </div>
+              </button>
             ))
           )}
 
@@ -181,6 +188,14 @@ export const CameraView = ({ isDarkMode, debts }: Props) => {
           </button>
         </div>
       </section>
+
+      {selectedDebt && (
+        <MovementDetailModal
+          item={{ kind: 'debt', data: selectedDebt }}
+          isDarkMode={isDarkMode}
+          onClose={() => setSelectedDebt(null)}
+        />
+      )}
     </div>
   );
 };
