@@ -24,10 +24,10 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
   const base = { concept: data.concept, amount: data.amount, createdAt: serverTimestamp() };
 
   if (data.type === 'venta') {
+    const qty = data.quantity ?? 1;
+    const unitPrice = data.unitPrice ?? data.amount;
     await addDoc(collection(db, 'users', userId, 'sales'), {
-      product: data.concept,
-      quantity: 1,
-      unitPrice: data.amount,
+      items: [{ product: data.concept, quantity: qty, unitPrice, subtotal: data.amount }],
       total: data.amount,
       createdAt: serverTimestamp(),
     });
@@ -80,24 +80,35 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
     setIsLoading(true);
 
     const history = messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
-    const response = await sendMessageToGemini(input, history);
 
-    // Save to Firestore if financial data detected
-    let saved = false;
-    if (response.data && userId) {
-      try {
-        await saveToFirestore(userId, response.data);
-        saved = true;
-      } catch (e) {
-        console.error('Error saving from chat:', e);
+    try {
+      const response = await sendMessageToGemini(input, history);
+
+      // Save to Firestore if financial data detected
+      let saved = false;
+      if (response.data && userId) {
+        try {
+          await saveToFirestore(userId, response.data);
+          saved = true;
+        } catch (e) {
+          console.error('Error saving from chat:', e);
+        }
       }
-    }
 
-    setMessages((prev) => [
-      ...prev,
-      { role: 'model', text: response.message, data: response.data, timestamp: new Date(), saved },
-    ]);
-    setIsLoading(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'model', text: response.message, data: response.data, timestamp: new Date(), saved },
+      ]);
+    } catch (e: any) {
+      const errMsg = e?.message ?? String(e);
+      console.error('Chat error:', e);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'model', text: `Error: ${errMsg}`, timestamp: new Date() },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
