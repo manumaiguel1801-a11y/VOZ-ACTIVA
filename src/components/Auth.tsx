@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
-import { 
-  Mail, 
-  Lock, 
-  User, 
-  Phone, 
-  IdCard, 
-  Calendar, 
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Mail,
+  Lock,
+  User,
+  Phone,
+  IdCard,
+  Calendar,
   ArrowRight,
-  ChevronLeft
+  ChevronLeft,
+  Copy,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { auth, db } from '../firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -26,6 +30,8 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
   const [isManual, setIsManual] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [generatedEmail, setGeneratedEmail] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Form State
   const [email, setEmail] = useState('');
@@ -64,6 +70,12 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
           email: isManual ? null : email,
           createdAt: serverTimestamp()
         });
+
+        if (isManual) {
+          setGeneratedEmail(finalEmail);
+          setLoading(false);
+          return; // Hold — let the popup close before Firebase triggers the auth state change
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -73,7 +85,88 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
     }
   };
 
+  const handleCopy = () => {
+    if (!generatedEmail) return;
+    navigator.clipboard.writeText(generatedEmail).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
+    <>
+    {/* Generated-email popup for manual registration */}
+    <AnimatePresence>
+      {generatedEmail && (
+        <motion.div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <motion.div
+            className={cn(
+              'relative w-full max-w-sm rounded-2xl shadow-2xl z-10 overflow-hidden',
+              isDarkMode ? 'bg-[#1A1A1A] text-[#FDFBF0]' : 'bg-white text-[#0D0D0D]'
+            )}
+            initial={{ opacity: 0, scale: 0.88, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.88, y: 24 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+          >
+            {/* Gold top bar */}
+            <div className="h-1.5 w-full bg-gradient-to-r from-[#B8860B] to-[#FFD700]" />
+
+            <div className="px-6 pt-6 pb-7 space-y-5">
+              {/* Icon + title */}
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-[#B8860B]/15 flex items-center justify-center">
+                    <Mail className="w-5 h-5 text-[#B8860B]" />
+                  </div>
+                  <div>
+                    <h2 className="font-black text-lg leading-tight">¡Cuenta creada!</h2>
+                    <p className="text-[11px] font-bold uppercase tracking-widest opacity-40">Tu correo de acceso</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <p className={cn('text-sm font-medium leading-relaxed', isDarkMode ? 'text-white/70' : 'text-black/60')}>
+                Como te registraste sin correo, generamos uno automáticamente con tu número de cédula. Úsalo para iniciar sesión en el futuro:
+              </p>
+
+              {/* Email pill */}
+              <button
+                onClick={handleCopy}
+                className={cn(
+                  'w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all active:scale-[0.98]',
+                  isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#f4f4f0]'
+                )}
+              >
+                <span className="font-black text-[#B8860B] text-sm truncate">{generatedEmail}</span>
+                {copied
+                  ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                  : <Copy className="w-4 h-4 opacity-40 flex-shrink-0" />}
+              </button>
+
+              <p className={cn('text-[11px] font-medium text-center', isDarkMode ? 'text-white/30' : 'text-black/30')}>
+                Toca el correo para copiarlo. También lo encontrarás en tu perfil.
+              </p>
+
+              {/* CTA */}
+              <button
+                onClick={() => setGeneratedEmail(null)}
+                className="w-full h-13 py-3.5 rounded-xl font-black text-base bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98] transition-all"
+              >
+                Entendido, ¡vamos!
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
     <div className={cn(
       "min-h-screen flex flex-col px-6 py-12 transition-colors duration-500",
       isDarkMode ? "bg-[#0D0D0D] text-[#FDFBF0]" : "bg-[#FDFBF0] text-[#2e2f2d]"
@@ -215,6 +308,7 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
@@ -236,10 +330,10 @@ const Input = ({
   required?: boolean
 }) => (
   <div className={cn(
-    "relative flex items-center h-14 rounded-xl border transition-all duration-300",
-    isDarkMode 
-      ? "bg-[#1A1A1A] border-white/10 focus-within:border-[#B8860B]" 
-      : "bg-white border-[#e8e8e5] focus-within:border-[#B8860B] shadow-sm"
+    "relative flex items-center h-14 rounded-xl transition-all duration-300",
+    isDarkMode
+      ? "bg-[#1A1A1A]"
+      : "bg-white shadow-sm"
   )}>
     <div className="pl-4 text-[#B8860B]">
       {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
