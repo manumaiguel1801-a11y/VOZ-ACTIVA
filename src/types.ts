@@ -57,6 +57,9 @@ export interface Debt {
   concept: string;
   amount: number;
   type: 'me-deben' | 'debo';
+  status?: 'pendiente' | 'parcial' | 'pagada';
+  amountPaid?: number;
+  paidAt?: any;
   createdAt: any;
 }
 

@@ -119,7 +119,7 @@ export default function App() {
         )}
         {activeTab === 'pasaporte' && (
           <motion.div key="passport" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <PassportView isDarkMode={isDarkMode} />
+            <PassportView isDarkMode={isDarkMode} sales={sales} expenses={expenses} debts={debts} profile={profile} />
           </motion.div>
         )}
         {activeTab === 'perfil' && profile && (
