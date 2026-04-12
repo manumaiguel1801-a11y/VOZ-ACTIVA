@@ -1,9 +1,42 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
+
+// Web Speech API — not in standard TS lib; declare minimal types
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+}
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onstart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null;
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => void) | null;
+}
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
+const SpeechRecognitionAPI =
+  typeof window !== 'undefined'
+    ? window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
+    : null;
 
 interface Message {
   role: 'user' | 'model';
@@ -64,6 +97,83 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Voice input state ──────────────────────────────────────────────
+  const voiceSupported = SpeechRecognitionAPI !== null;
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const interimRef = useRef(''); // tracks interim transcript so we can replace it
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+    interimRef.current = '';
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (!SpeechRecognitionAPI) return;
+    setMicError('');
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.lang = 'es-CO';
+    recognition.continuous = false;      // stops naturally after a pause
+    recognition.interimResults = true;   // real-time feedback while speaking
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      interimRef.current = '';
+    };
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) final += text;
+        else interim += text;
+      }
+      // Replace the current input with live transcription
+      setInput((prev) => {
+        // Strip previous interim result (stored in ref) and append new
+        const base = prev.endsWith(interimRef.current)
+          ? prev.slice(0, prev.length - interimRef.current.length)
+          : prev;
+        interimRef.current = final ? '' : interim;
+        return base + (final || interim);
+      });
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'not-allowed') {
+        setMicError('Permiso de micrófono denegado. Habilítalo en la configuración del navegador.');
+      } else if (event.error === 'no-speech') {
+        // Silently ignore — user didn't say anything
+      } else {
+        setMicError('No se pudo usar el micrófono. Intenta de nuevo.');
+      }
+      setIsListening(false);
+      recognitionRef.current = null;
+      interimRef.current = '';
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+      interimRef.current = '';
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  // Clean up recognition on unmount
+  useEffect(() => {
+    return () => { recognitionRef.current?.abort(); };
+  }, []);
+  // ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -176,30 +286,65 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
         )}
       </div>
 
-      <div className="pt-4">
+      <div className="pt-4 space-y-2">
+        {/* Mic permission error */}
+        {micError && (
+          <p className="text-xs font-medium text-red-400 text-center px-2">{micError}</p>
+        )}
+
         <div className="flex items-center gap-2">
+          {/* Input field */}
           <div className={cn(
             'flex-1 backdrop-blur-xl rounded-2xl h-12 px-4 flex items-center shadow-lg border transition-all duration-500',
-            isDarkMode ? 'bg-[#1A1A1A]/90 border-white/10' : 'bg-white/90 border-[#e8e8e5]'
+            isListening
+              ? isDarkMode ? 'bg-[#1A1A1A]/90 border-red-500/50' : 'bg-white/90 border-red-400/50'
+              : isDarkMode ? 'bg-[#1A1A1A]/90 border-white/10' : 'bg-white/90 border-[#e8e8e5]'
           )}>
+            {isListening && (
+              /* Pulsing dot while recording */
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2 shrink-0" />
+            )}
             <input
               className={cn(
                 'bg-transparent border-none focus:ring-0 w-full text-sm font-medium transition-colors',
                 isDarkMode ? 'text-[#FDFBF0] placeholder:text-[#FDFBF0]/30' : 'text-[#2e2f2d] placeholder:text-[#5b5c5a]/50'
               )}
-              placeholder="Ej: vendí 3 almuerzos por 45 mil..."
+              placeholder={isListening ? 'Escuchando...' : 'Ej: vendí 3 almuerzos por 45 mil...'}
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onChange={(e) => { if (!isListening) setInput(e.target.value); }}
+              onKeyDown={(e) => e.key === 'Enter' && !isListening && handleSend()}
             />
           </div>
+
+          {/* Mic button — only shown when Web Speech API is available */}
+          {voiceSupported && (
+            <button
+              onClick={isListening ? stopListening : startListening}
+              disabled={isLoading}
+              title={isListening ? 'Detener grabación' : 'Dictar mensaje'}
+              className={cn(
+                'w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all shrink-0',
+                isListening
+                  ? 'bg-red-500 text-white'
+                  : isDarkMode
+                    ? 'bg-white/10 text-[#FFD700] hover:bg-white/15'
+                    : 'bg-black/5 text-[#B8860B] hover:bg-black/10'
+              )}
+            >
+              {isListening
+                ? <Square className="w-4 h-4 fill-current" />
+                : <Mic className="w-5 h-5" />}
+            </button>
+          )}
+
+          {/* Send button */}
           <button
             onClick={handleSend}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || isListening}
             className={cn(
               'w-12 h-12 rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all shrink-0',
-              input.trim()
+              input.trim() && !isListening
                 ? 'bg-gradient-to-br from-[#B8860B] to-[#FFD700] text-black'
                 : 'bg-gray-500/20 text-gray-500 opacity-50'
             )}
