@@ -57,6 +57,9 @@ export interface Debt {
   concept: string;
   amount: number;
   type: 'me-deben' | 'debo';
+  status?: 'pendiente' | 'parcial' | 'pagada';
+  amountPaid?: number;  // acumulado de abonos
+  paidAt?: any;
   createdAt: any;
 }
 
