@@ -36,11 +36,17 @@ export const CameraView = ({ isDarkMode, debts }: Props) => {
   const [debtType, setDebtType] = useState<'me-deben' | 'debo'>('me-deben');
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
 
-  const filteredDebts = debts.filter((d) => d.type === debtType);
+  const filteredDebts = debts.filter(
+    (d) => d.type === debtType && (d.status ?? 'pendiente') !== 'pagada'
+  );
 
   const { totalMeDeben, totalDebo } = useMemo(() => ({
-    totalMeDeben: debts.filter((d) => d.type === 'me-deben').reduce((s, d) => s + d.amount, 0),
-    totalDebo: debts.filter((d) => d.type === 'debo').reduce((s, d) => s + d.amount, 0),
+    totalMeDeben: debts
+      .filter((d) => d.type === 'me-deben' && (d.status ?? 'pendiente') !== 'pagada')
+      .reduce((s, d) => s + (d.amount - (d.amountPaid ?? 0)), 0),
+    totalDebo: debts
+      .filter((d) => d.type === 'debo' && (d.status ?? 'pendiente') !== 'pagada')
+      .reduce((s, d) => s + (d.amount - (d.amountPaid ?? 0)), 0),
   }), [debts]);
 
   return (
@@ -161,14 +167,20 @@ export const CameraView = ({ isDarkMode, debts }: Props) => {
                 <div className="flex items-center gap-1">
                   <div className="text-right">
                     <p className={cn('font-black text-xl', item.type === 'me-deben' ? 'text-[#B8860B]' : 'opacity-70')}>
-                      ${item.amount.toLocaleString('es-CO')}
+                      ${(item.amount - (item.amountPaid ?? 0)).toLocaleString('es-CO')}
                     </p>
-                    <span className={cn(
-                      'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase',
-                      isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#483000]'
-                    )}>
-                      {item.type === 'me-deben' ? 'A COBRAR' : 'A PAGAR'}
-                    </span>
+                    {item.status === 'parcial' ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-100 text-amber-700">
+                        PARCIAL
+                      </span>
+                    ) : (
+                      <span className={cn(
+                        'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase',
+                        isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#483000]'
+                      )}>
+                        {item.type === 'me-deben' ? 'A COBRAR' : 'A PAGAR'}
+                      </span>
+                    )}
                   </div>
                   <ChevronRight className={cn('w-4 h-4 flex-shrink-0', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                 </div>

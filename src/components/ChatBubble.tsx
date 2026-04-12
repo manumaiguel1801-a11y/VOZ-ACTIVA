@@ -3,8 +3,9 @@ import { MessageCircle, X, Send, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Chat } from './Chat';
+import { Debt } from '../types';
 
-export const ChatBubble = ({ isDarkMode, userId }: { isDarkMode: boolean; userId: string }) => {
+export const ChatBubble = ({ isDarkMode, userId, debts }: { isDarkMode: boolean; userId: string; debts: Debt[] }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -50,7 +51,7 @@ export const ChatBubble = ({ isDarkMode, userId }: { isDarkMode: boolean; userId
               </div>
               
               <div className="flex-1 overflow-hidden px-2">
-                <Chat isDarkMode={isDarkMode} userId={userId} />
+                <Chat isDarkMode={isDarkMode} userId={userId} debts={debts} />
               </div>
             </div>
           </motion.div>

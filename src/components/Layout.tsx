@@ -13,7 +13,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Tab } from '../types';
+import { Tab, Debt } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { OnboardingManual } from './OnboardingManual';
 import { SuggestionsModal } from './SuggestionsModal';
@@ -26,6 +26,7 @@ interface LayoutProps {
   toggleDarkMode: () => void;
   userName?: string;
   userId: string;
+  debts: Debt[];
 }
 
 export const Layout = ({
@@ -35,7 +36,8 @@ export const Layout = ({
   isDarkMode,
   toggleDarkMode,
   userName = 'Bienvenido',
-  userId
+  userId,
+  debts,
 }: LayoutProps) => {
   const [showManual, setShowManual] = React.useState(false);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
@@ -140,7 +142,7 @@ export const Layout = ({
       </main>
 
       {/* Floating Chat Bubble */}
-      <ChatBubble isDarkMode={isDarkMode} userId={userId} />
+      <ChatBubble isDarkMode={isDarkMode} userId={userId} debts={debts} />
 
       {/* Bottom Nav */}
       <nav className={cn(

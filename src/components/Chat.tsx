@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square } from 'lucide-react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square, AlertCircle, CreditCard } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
+import { Debt } from '../types';
 
 // Web Speech API — not in standard TS lib; declare minimal types
 interface SpeechRecognitionEvent extends Event {
@@ -38,20 +39,72 @@ const SpeechRecognitionAPI =
     ? window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
     : null;
 
+interface DebtPaymentResult {
+  found: boolean;
+  debtorName: string;
+  amount: number;
+  isPartial: boolean;
+  status?: 'pagada' | 'parcial';
+  remaining?: number;
+  paymentType?: 'pago-deuda-debo' | 'cobro-deuda-me-deben';
+}
+
 interface Message {
   role: 'user' | 'model';
   text: string;
   data?: ChatResponse['data'];
   timestamp: Date;
   saved?: boolean;
+  debtResults?: DebtPaymentResult[];
 }
 
 const TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  'venta':           { label: 'Venta registrada',    icon: <ShoppingBag className="w-4 h-4" />,  color: 'text-[#B8860B]' },
-  'gasto':           { label: 'Gasto registrado',    icon: <TrendingDown className="w-4 h-4" />, color: 'text-red-500' },
-  'deuda-me-deben':  { label: 'Deuda a cobrar',      icon: <UserPlus className="w-4 h-4" />,     color: 'text-[#B8860B]' },
-  'deuda-debo':      { label: 'Deuda registrada',    icon: <UserMinus className="w-4 h-4" />,    color: 'text-orange-500' },
+  'venta':                 { label: 'Venta registrada',    icon: <ShoppingBag className="w-4 h-4" />,  color: 'text-[#B8860B]' },
+  'gasto':                 { label: 'Gasto registrado',    icon: <TrendingDown className="w-4 h-4" />, color: 'text-red-500' },
+  'deuda-me-deben':        { label: 'Deuda a cobrar',      icon: <UserPlus className="w-4 h-4" />,     color: 'text-[#B8860B]' },
+  'deuda-debo':            { label: 'Deuda registrada',    icon: <UserMinus className="w-4 h-4" />,    color: 'text-orange-500' },
+  'pago-deuda-debo':       { label: 'Pago de deuda',       icon: <CreditCard className="w-4 h-4" />,   color: 'text-green-500' },
+  'cobro-deuda-me-deben':  { label: 'Cobro de deuda',      icon: <CreditCard className="w-4 h-4" />,   color: 'text-[#B8860B]' },
 };
+
+// Normaliza texto eliminando tildes y pasando a minúsculas para fuzzy match
+function normalizeStr(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+// Busca una deuda pendiente/parcial que coincida con el nombre dado
+function findDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): Debt | null {
+  const n = normalizeStr(name);
+  if (!n) return null;
+  return debts.find(d =>
+    d.type === debtType &&
+    (d.status ?? 'pendiente') !== 'pagada' &&
+    (normalizeStr(d.name).includes(n) || n.includes(normalizeStr(d.name)))
+  ) ?? null;
+}
+
+// Aplica un pago (total o abono) a una deuda en Firestore
+async function applyDebtPayment(
+  userId: string,
+  debt: Debt,
+  paymentAmount: number,
+  isPartial: boolean,
+): Promise<{ status: 'pagada' | 'parcial'; remaining: number; effectivePayment: number }> {
+  const alreadyPaid = debt.amountPaid ?? 0;
+  // Si amount=0 significa pago total del saldo restante
+  const effectivePayment = paymentAmount > 0 ? paymentAmount : debt.amount - alreadyPaid;
+  const totalPaid = alreadyPaid + effectivePayment;
+  const remaining = Math.max(0, debt.amount - totalPaid);
+  const newStatus: 'pagada' | 'parcial' = (remaining <= 0 || !isPartial) ? 'pagada' : 'parcial';
+
+  await updateDoc(doc(db, 'users', userId, 'debts', debt.id), {
+    status: newStatus,
+    amountPaid: totalPaid,
+    ...(newStatus === 'pagada' ? { paidAt: serverTimestamp() } : {}),
+  });
+
+  return { status: newStatus, remaining, effectivePayment };
+}
 
 async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['data']>): Promise<void> {
   const base = { concept: data.concept, amount: data.amount, createdAt: serverTimestamp() };
@@ -84,9 +137,10 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
 interface Props {
   isDarkMode: boolean;
   userId: string;
+  debts: Debt[];
 }
 
-export const Chat = ({ isDarkMode, userId }: Props) => {
+export const Chat = ({ isDarkMode, userId, debts }: Props) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
@@ -103,66 +157,51 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState('');
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const interimRef = useRef(''); // tracks interim transcript so we can replace it
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setIsListening(false);
-    interimRef.current = '';
   }, []);
 
   const startListening = useCallback(() => {
     if (!SpeechRecognitionAPI) return;
     setMicError('');
+    setInput(''); // clear input before recording so transcript is clean
 
     const recognition = new SpeechRecognitionAPI();
+    // es-CO = Colombian Spanish — best available for costeño/barranquillero dialect
     recognition.lang = 'es-CO';
-    recognition.continuous = false;      // stops naturally after a pause
-    recognition.interimResults = true;   // real-time feedback while speaking
+    recognition.continuous = false;    // stops naturally after a pause
+    recognition.interimResults = true; // show text in real-time while speaking
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      interimRef.current = '';
-    };
+    recognition.onstart = () => setIsListening(true);
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = '';
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) final += text;
-        else interim += text;
+      // Always rebuild the full transcript from ALL results (0..length).
+      // This avoids the duplication bug that comes from iterating only
+      // from event.resultIndex and trying to do string-slice surgery on prev state.
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
       }
-      // Replace the current input with live transcription
-      setInput((prev) => {
-        // Strip previous interim result (stored in ref) and append new
-        const base = prev.endsWith(interimRef.current)
-          ? prev.slice(0, prev.length - interimRef.current.length)
-          : prev;
-        interimRef.current = final ? '' : interim;
-        return base + (final || interim);
-      });
+      setInput(transcript.trim());
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (event.error === 'not-allowed') {
-        setMicError('Permiso de micrófono denegado. Habilítalo en la configuración del navegador.');
-      } else if (event.error === 'no-speech') {
-        // Silently ignore — user didn't say anything
-      } else {
+        setMicError('Permiso de micrófono denegado. Habilítalo en ajustes del navegador.');
+      } else if (event.error !== 'no-speech') {
         setMicError('No se pudo usar el micrófono. Intenta de nuevo.');
       }
       setIsListening(false);
       recognitionRef.current = null;
-      interimRef.current = '';
     };
 
     recognition.onend = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      interimRef.current = '';
     };
 
     recognitionRef.current = recognition;
@@ -193,22 +232,85 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
 
     try {
       const response = await sendMessageToGemini(input, history);
+      const dataType = response.data?.type;
+      const isDebtPayment = dataType === 'pago-deuda-debo' || dataType === 'cobro-deuda-me-deben';
 
-      // Save to Firestore if financial data detected
-      let saved = false;
-      if (response.data && userId) {
-        try {
-          await saveToFirestore(userId, response.data);
-          saved = true;
-        } catch (e) {
-          console.error('Error saving from chat:', e);
+      if (isDebtPayment && response.data) {
+        // ── Flujo de pago / cobro de deuda ──────────────────────────────
+        const debtType = dataType === 'pago-deuda-debo' ? 'debo' : 'me-deben';
+
+        // Construye la lista de pagos (uno o varios)
+        const rawPayments = response.data.payments?.length
+          ? response.data.payments
+          : [{ debtorName: response.data.debtorName ?? response.data.concept ?? '', amount: response.data.amount, isPartial: response.data.isPartial ?? false }];
+
+        const debtResults: DebtPaymentResult[] = [];
+
+        for (const p of rawPayments) {
+          const matched = findDebt(debts, p.debtorName, debtType);
+          if (matched) {
+            try {
+              const result = await applyDebtPayment(userId, matched, p.amount, p.isPartial);
+              debtResults.push({
+                found: true,
+                debtorName: p.debtorName,
+                amount: result.effectivePayment,
+                isPartial: p.isPartial,
+                paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben',
+                ...result,
+              });
+              // Create a financial movement so it appears in Dashboard and FinanceView
+              if (dataType === 'pago-deuda-debo') {
+                await addDoc(collection(db, 'users', userId, 'expenses'), {
+                  concept: `Pago deuda: ${matched.name}`,
+                  amount: result.effectivePayment,
+                  createdAt: serverTimestamp(),
+                });
+              } else {
+                await addDoc(collection(db, 'users', userId, 'sales'), {
+                  items: [{ product: `Cobro: ${matched.name}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
+                  total: result.effectivePayment,
+                  createdAt: serverTimestamp(),
+                });
+              }
+            } catch (e) {
+              console.error('Error updating debt:', e);
+              debtResults.push({ found: true, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+            }
+          } else {
+            debtResults.push({ found: false, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+          }
         }
-      }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: 'model', text: response.message, data: response.data, timestamp: new Date(), saved },
-      ]);
+        const allFound = debtResults.every(r => r.found);
+        setMessages((prev) => [...prev, {
+          role: 'model',
+          text: response.message,
+          data: response.data,
+          timestamp: new Date(),
+          saved: allFound,
+          debtResults,
+        }]);
+
+      } else {
+        // ── Flujo normal: venta / gasto / registro de deuda nueva ────────
+        let saved = false;
+        if (response.data && userId) {
+          try {
+            await saveToFirestore(userId, response.data);
+            saved = true;
+          } catch (e) {
+            console.error('Error saving from chat:', e);
+          }
+        }
+        setMessages((prev) => [...prev, {
+          role: 'model',
+          text: response.message,
+          data: response.data,
+          timestamp: new Date(),
+          saved,
+        }]);
+      }
     } catch (e: any) {
       const errMsg = e?.message ?? String(e);
       console.error('Chat error:', e);
@@ -240,7 +342,8 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
             )}>
               <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
 
-              {msg.data && (
+              {/* Card para ventas / gastos / registro de deudas nuevas */}
+              {msg.data && !msg.debtResults && (
                 <div className={cn(
                   'mt-3 p-3 rounded-xl border-l-4 flex items-center gap-3',
                   isDarkMode ? 'bg-black/20 border-[#B8860B]' : 'bg-white/60 border-[#B8860B]'
@@ -261,6 +364,63 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
                     </p>
                     <p className="text-[10px] opacity-40 truncate">{msg.data.concept}</p>
                   </div>
+                </div>
+              )}
+
+              {/* Cards para resultados de pago/cobro de deudas */}
+              {msg.debtResults && msg.debtResults.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {msg.debtResults.map((r, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'p-3 rounded-xl border-l-4 flex items-center gap-3',
+                        r.found
+                          ? r.status === 'pagada'
+                            ? isDarkMode ? 'bg-green-500/10 border-green-500' : 'bg-green-50 border-green-500'
+                            : isDarkMode ? 'bg-amber-500/10 border-amber-400' : 'bg-amber-50 border-amber-400'
+                          : isDarkMode ? 'bg-red-500/10 border-red-400' : 'bg-red-50 border-red-400'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
+                        r.found
+                          ? r.status === 'pagada' ? 'bg-green-500/20 text-green-500' : 'bg-amber-400/20 text-amber-500'
+                          : 'bg-red-400/20 text-red-400'
+                      )}>
+                        {r.found
+                          ? <CheckCircle2 className="w-4 h-4" />
+                          : <AlertCircle className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">
+                          {r.found
+                            ? r.status === 'pagada' ? 'Deuda saldada ✓' : 'Abono registrado ✓'
+                            : 'Deuda no encontrada'}
+                        </p>
+                        <p className="text-sm font-black truncate">{r.debtorName}</p>
+                        {r.found && r.status === 'parcial' && r.remaining != null && (
+                          <p className="text-[10px] opacity-60">
+                            Abono: ${r.amount.toLocaleString('es-CO')} · Pendiente: ${r.remaining.toLocaleString('es-CO')}
+                          </p>
+                        )}
+                        {r.found && r.status === 'pagada' && (
+                          <p className="text-[10px] opacity-60">Pagado: ${r.amount.toLocaleString('es-CO')}</p>
+                        )}
+                        {!r.found && (
+                          <p className="text-[10px] opacity-60">
+                            Regístrala primero diciéndome:{' '}
+                            <span className="font-bold">
+                              "{r.paymentType === 'pago-deuda-debo'
+                                ? `le debo [monto] a ${r.debtorName}`
+                                : `${r.debtorName} me debe [monto]`}"
+                            </span>{' '}
+                            y luego repite el pago.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
