@@ -158,10 +158,10 @@ export const RegisterSaleModal = ({ userId, isDarkMode, onClose }: Props) => {
                   value={row.product}
                   onChange={(e) => updateRow(row.id, 'product', e.target.value)}
                   className={cn(
-                    'h-12 px-3 rounded-xl text-sm font-medium border-2 outline-none transition-all',
+                    'h-12 px-3 rounded-xl text-sm font-medium border-0 outline-none transition-all',
                     isDarkMode
-                      ? 'bg-[#2A2A2A] border-white/10 focus:border-[#B8860B] text-[#FDFBF0] placeholder:text-white/25'
-                      : 'bg-[#f8f8f5] border-[#f0f0ec] focus:border-[#B8860B] placeholder:text-black/25'
+                      ? 'bg-[#2A2A2A] text-[#FDFBF0] placeholder:text-white/25'
+                      : 'bg-[#f8f8f5] placeholder:text-black/25'
                   )}
                 />
                 {/* Quantity */}
@@ -171,10 +171,10 @@ export const RegisterSaleModal = ({ userId, isDarkMode, onClose }: Props) => {
                   value={row.quantity}
                   onChange={(e) => updateRow(row.id, 'quantity', e.target.value)}
                   className={cn(
-                    'h-12 px-2 rounded-xl text-sm font-medium border-2 outline-none transition-all text-center',
+                    'h-12 px-2 rounded-xl text-sm font-medium border-0 outline-none transition-all text-center',
                     isDarkMode
-                      ? 'bg-[#2A2A2A] border-white/10 focus:border-[#B8860B] text-[#FDFBF0]'
-                      : 'bg-[#f8f8f5] border-[#f0f0ec] focus:border-[#B8860B]'
+                      ? 'bg-[#2A2A2A] text-[#FDFBF0]'
+                      : 'bg-[#f8f8f5]'
                   )}
                 />
                 {/* Unit price */}
@@ -187,10 +187,10 @@ export const RegisterSaleModal = ({ userId, isDarkMode, onClose }: Props) => {
                     value={row.rawPrice}
                     onChange={(e) => updateRow(row.id, 'rawPrice', e.target.value)}
                     className={cn(
-                      'w-full h-12 pl-6 pr-2 rounded-xl text-sm font-medium border-2 outline-none transition-all',
+                      'w-full h-12 pl-6 pr-2 rounded-xl text-sm font-medium border-0 outline-none transition-all',
                       isDarkMode
-                        ? 'bg-[#2A2A2A] border-white/10 focus:border-[#B8860B] text-[#FDFBF0] placeholder:text-white/25'
-                        : 'bg-[#f8f8f5] border-[#f0f0ec] focus:border-[#B8860B] placeholder:text-black/25'
+                        ? 'bg-[#2A2A2A] text-[#FDFBF0] placeholder:text-white/25'
+                        : 'bg-[#f8f8f5] placeholder:text-black/25'
                     )}
                   />
                 </div>

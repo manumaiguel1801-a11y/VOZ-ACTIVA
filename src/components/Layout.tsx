@@ -1,20 +1,22 @@
 import React from 'react';
-import { 
-  Home, 
-  Camera, 
-  Wallet, 
+import {
+  Home,
+  Camera,
+  Wallet,
   User,
-  Moon, 
+  Moon,
   Sun,
   TrendingUp,
   Package,
   MessageCircle,
-  HelpCircle
+  HelpCircle,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Tab } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { OnboardingManual } from './OnboardingManual';
+import { SuggestionsModal } from './SuggestionsModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -36,6 +38,10 @@ export const Layout = ({
   userId
 }: LayoutProps) => {
   const [showManual, setShowManual] = React.useState(false);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+
+  // Derive a clean name from "Hola, Juan" → "Juan"
+  const cleanName = userName.startsWith('Hola, ') ? userName.replace('Hola, ', '') : userName;
 
   // Auto-show manual on first visit (using localStorage)
   React.useEffect(() => {
@@ -52,11 +58,20 @@ export const Layout = ({
       isDarkMode ? "bg-[#0D0D0D] text-[#FDFBF0]" : "bg-[#FDFBF0] text-[#2e2f2d]"
     )}>
       {/* Onboarding Manual */}
-      <OnboardingManual 
-        isOpen={showManual} 
-        onClose={() => setShowManual(false)} 
-        isDarkMode={isDarkMode} 
+      <OnboardingManual
+        isOpen={showManual}
+        onClose={() => setShowManual(false)}
+        isDarkMode={isDarkMode}
       />
+
+      {/* Suggestions / PQRS Modal */}
+      {showSuggestions && (
+        <SuggestionsModal
+          isDarkMode={isDarkMode}
+          fromName={cleanName}
+          onClose={() => setShowSuggestions(false)}
+        />
+      )}
 
       {/* Top Bar */}
       <header className={cn(
@@ -77,7 +92,17 @@ export const Layout = ({
           </h1>
         </div>
         <div className="flex items-center gap-1">
-          <button 
+          <button
+            onClick={() => setShowSuggestions(true)}
+            className={cn(
+              "w-10 h-10 flex items-center justify-center rounded-full transition-colors",
+              isDarkMode ? "hover:bg-white/10 text-[#FFD700]" : "hover:bg-black/5 text-[#B8860B]"
+            )}
+            title="Buzón de sugerencias"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setShowManual(true)}
             className={cn(
               "w-10 h-10 flex items-center justify-center rounded-full transition-colors",
