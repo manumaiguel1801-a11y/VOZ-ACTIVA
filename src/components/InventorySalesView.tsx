@@ -80,7 +80,7 @@ export const InventorySalesView = ({ isDarkMode, sales }: Props) => {
 const InventorySection = ({ isDarkMode }: { isDarkMode: boolean }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
     <div className="flex items-center gap-3">
-      <div className={cn('flex-1 h-12 rounded-xl flex items-center px-4 gap-2 border transition-all', isDarkMode ? 'bg-[#1A1A1A] border-white/10' : 'bg-white border-[#e8e8e5]')}>
+      <div className={cn('flex-1 h-12 rounded-xl flex items-center px-4 gap-2 transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
         <Search className="w-4 h-4 opacity-40" />
         <input type="text" placeholder="Buscar producto..." className="bg-transparent border-none focus:ring-0 text-sm w-full" />
       </div>

@@ -110,7 +110,7 @@ export const AllMovementsModal = ({ isDarkMode, sales, expenses, onClose }: Prop
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 flex items-end"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -119,22 +119,17 @@ export const AllMovementsModal = ({ isDarkMode, sales, expenses, onClose }: Prop
 
         <motion.div
           className={cn(
-            'relative w-full rounded-t-3xl z-10 flex flex-col',
-            'max-h-[92dvh] max-h-[92vh]',
+            'relative w-full max-w-md rounded-2xl shadow-2xl z-10 flex flex-col',
+            'max-h-[90dvh] max-h-[90vh]',
             isDarkMode ? 'bg-[#0D0D0D] text-[#FDFBF0]' : 'bg-[#FDFBF0] text-[#0D0D0D]'
           )}
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          initial={{ opacity: 0, scale: 0.92, y: 24 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.92, y: 24 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 320 }}
         >
-          {/* Handle */}
-          <div className="flex-shrink-0 pt-3 px-6">
-            <div className={cn('w-12 h-1 rounded-full mx-auto mb-5', isDarkMode ? 'bg-white/20' : 'bg-black/10')} />
-          </div>
-
           {/* Header */}
-          <div className="flex-shrink-0 px-6 pb-4">
+          <div className="flex-shrink-0 px-6 pt-5 pb-4">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-2xl font-black">Todos los movimientos</h2>
