@@ -58,7 +58,7 @@ export interface Debt {
   amount: number;
   type: 'me-deben' | 'debo';
   status?: 'pendiente' | 'parcial' | 'pagada';
-  amountPaid?: number;
+  amountPaid?: number;  // acumulado de abonos
   paidAt?: any;
   createdAt: any;
 }

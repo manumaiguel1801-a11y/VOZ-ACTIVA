@@ -95,6 +95,7 @@ export default function App() {
       toggleDarkMode={toggleDarkMode}
       userName={profile ? `Hola, ${profile.firstName}` : 'Bienvenido'}
       userId={user.uid}
+      debts={debts}
     >
       <AnimatePresence mode="wait">
         {activeTab === 'inicio' && (
