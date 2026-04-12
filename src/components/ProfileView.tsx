@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { 
-  User, 
-  Phone, 
-  IdCard, 
-  Calendar, 
-  Mail, 
-  LogOut, 
+import {
+  User,
+  Phone,
+  IdCard,
+  Calendar,
+  Mail,
+  LogOut,
   Save,
-  Edit2
+  Edit2,
+  MessageSquare,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { UserProfile } from '../types';
 import { auth, db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { SuggestionsModal } from './SuggestionsModal';
 
 interface ProfileViewProps {
   isDarkMode: boolean;
@@ -24,6 +27,7 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(profile);
   const [loading, setLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const handleSave = async () => {
     if (!auth.currentUser) return;
@@ -52,7 +56,7 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col items-center py-6">
         <div className="relative">
           <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#B8860B] shadow-xl">
@@ -122,12 +126,13 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
             onChange={(v) => setFormData({...formData, birthDate: v})}
             isDarkMode={isDarkMode}
           />
-          <ProfileField 
-            icon={<Mail />} 
-            label="Correo" 
-            value={profile.email || 'No vinculado'} 
+          <ProfileField
+            icon={<Mail />}
+            label="Correo de acceso"
+            value={profile.email || `${profile.idNumber}@vozactiva.com`}
             isEditing={false}
             isDarkMode={isDarkMode}
+            isGenerated={!profile.email}
           />
         </div>
 
@@ -163,38 +168,67 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
           </button>
         </div>
       </div>
+      {/* PQRS / Contáctanos */}
+      <button
+        onClick={() => setShowSuggestions(true)}
+        className={cn(
+          'w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98]',
+          isDarkMode ? 'bg-[#1A1A1A] hover:bg-[#222]' : 'bg-white shadow-sm hover:shadow-md'
+        )}
+      >
+        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#B8860B] to-[#FFD700] flex items-center justify-center flex-shrink-0 shadow-md">
+          <MessageSquare className="w-5 h-5 text-black" />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="font-black text-sm">PQRS · Contáctanos</p>
+          <p className={cn('text-[11px] font-medium', isDarkMode ? 'text-white/40' : 'text-black/40')}>
+            Sugerencias, felicitaciones, quejas o reclamos
+          </p>
+        </div>
+        <ChevronRight className={cn('w-4 h-4 flex-shrink-0', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+      </button>
+
+      {showSuggestions && (
+        <SuggestionsModal
+          isDarkMode={isDarkMode}
+          fromName={`${profile.firstName} ${profile.lastName}`.trim()}
+          onClose={() => setShowSuggestions(false)}
+        />
+      )}
     </div>
   );
 };
 
-const ProfileField = ({ 
-  icon, 
-  label, 
-  value, 
-  isEditing, 
-  onChange, 
+const ProfileField = ({
+  icon,
+  label,
+  value,
+  isEditing,
+  onChange,
   type = "text",
-  isDarkMode
-}: { 
-  icon: React.ReactNode, 
-  label: string, 
-  value: string, 
+  isDarkMode,
+  isGenerated = false,
+}: {
+  icon: React.ReactNode,
+  label: string,
+  value: string,
   isEditing: boolean,
   onChange?: (v: string) => void,
   type?: string,
-  isDarkMode: boolean
+  isDarkMode: boolean,
+  isGenerated?: boolean,
 }) => (
-  <div className="flex items-center gap-4">
+  <div className="flex items-start gap-4">
     <div className={cn(
-      "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
+      "w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 mt-0.5",
       isDarkMode ? "bg-[#2A2A2A] text-[#B8860B]" : "bg-[#f1f1ee] text-[#B8860B]"
     )}>
       {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
     </div>
-    <div className="flex-1">
+    <div className="flex-1 min-w-0">
       <p className="text-[10px] uppercase tracking-widest opacity-50 font-bold">{label}</p>
       {isEditing && onChange ? (
-        <input 
+        <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -204,7 +238,14 @@ const ProfileField = ({
           )}
         />
       ) : (
-        <p className="font-bold text-lg">{value}</p>
+        <>
+          <p className={cn("font-bold text-lg break-all", isGenerated ? "text-[#B8860B]" : "")}>{value}</p>
+          {isGenerated && (
+            <p className={cn("text-[10px] font-bold mt-0.5", isDarkMode ? "text-white/30" : "text-black/30")}>
+              Generado automáticamente con tu cédula
+            </p>
+          )}
+        </>
       )}
     </div>
   </div>

@@ -295,10 +295,10 @@ export const Chat = ({ isDarkMode, userId }: Props) => {
         <div className="flex items-center gap-2">
           {/* Input field */}
           <div className={cn(
-            'flex-1 backdrop-blur-xl rounded-2xl h-12 px-4 flex items-center shadow-lg border transition-all duration-500',
+            'flex-1 backdrop-blur-xl rounded-2xl h-12 px-4 flex items-center shadow-lg transition-all duration-500',
             isListening
-              ? isDarkMode ? 'bg-[#1A1A1A]/90 border-red-500/50' : 'bg-white/90 border-red-400/50'
-              : isDarkMode ? 'bg-[#1A1A1A]/90 border-white/10' : 'bg-white/90 border-[#e8e8e5]'
+              ? isDarkMode ? 'bg-[#1A1A1A]/90 ring-1 ring-red-500/50' : 'bg-white/90 ring-1 ring-red-400/50'
+              : isDarkMode ? 'bg-[#1A1A1A]/90' : 'bg-white/90'
           )}>
             {isListening && (
               /* Pulsing dot while recording */
