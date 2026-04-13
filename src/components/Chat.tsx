@@ -4,7 +4,7 @@ import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/fi
 import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
-import { Debt, InventoryProduct } from '../types';
+import { Debt, InventoryProduct, getPrecioVenta } from '../types';
 
 // Web Speech API — not in standard TS lib; declare minimal types
 interface SpeechRecognitionEvent extends Event {
@@ -50,12 +50,14 @@ interface DebtPaymentResult {
 }
 
 // State for multi-turn new-product flow
-type PendingProductStep = 'asking-price' | 'asking-stock';
+type PendingProductStep = 'asking-precio-compra' | 'asking-precio-venta' | 'asking-stock';
 interface PendingProduct {
   concept: string;
   quantity: number;
+  isCompra: boolean;   // true if triggered by 'compra' type
   step: PendingProductStep;
-  unitPrice?: number;
+  precioCompra?: number;
+  precioVenta?: number;
 }
 
 interface Message {
@@ -273,17 +275,70 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
 
     // ── Pending new-product flow (multi-turn, no Gemini needed) ────────────
     if (pendingProduct) {
-      if (pendingProduct.step === 'asking-price') {
+      // Step: asking for precioCompra
+      if (pendingProduct.step === 'asking-precio-compra') {
         const price = parseUserNumber(userInput);
         if (!price || price <= 0) {
           addBotMsg('No entendí el precio. Dímelo en pesos, ej: 1500 o 5 mil.');
           return;
         }
-        setPendingProduct({ ...pendingProduct, unitPrice: price, step: 'asking-stock' });
-        addBotMsg(`$${price.toLocaleString('es-CO')} anotado. ¿Y cuántas unidades tienes disponibles en total ahora?`);
+        if (pendingProduct.isCompra) {
+          // compra: after precioCompra ask precioVenta
+          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-precio-venta' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Y a qué precio lo vendes tú?`);
+        } else {
+          // venta: after precioCompra ask precioVenta then stock
+          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-precio-venta' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Y a qué precio lo vendes?`);
+        }
         return;
       }
 
+      // Step: asking for precioVenta
+      if (pendingProduct.step === 'asking-precio-venta') {
+        const price = parseUserNumber(userInput);
+        if (!price || price <= 0) {
+          addBotMsg('No entendí el precio de venta. Ej: 2000 o 8 mil.');
+          return;
+        }
+        if (pendingProduct.isCompra) {
+          // compra: tenemos todo — guardar inventario + gasto
+          const { concept, quantity, precioCompra = 0 } = pendingProduct;
+          const total = quantity * precioCompra;
+          setIsLoading(true);
+          try {
+            await addDoc(collection(db, 'users', userId, 'inventario'), {
+              nombre: concept,
+              cantidad: quantity,
+              precioCompra,
+              precioVenta: price,
+              createdAt: serverTimestamp(),
+            });
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${concept}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+            });
+            addBotMsg(
+              `¡Listo! ${quantity} ${concept} guardados — compra a $${precioCompra.toLocaleString('es-CO')}, venta a $${price.toLocaleString('es-CO')}. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
+              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra } }
+            );
+          } catch (e) {
+            console.error('[Chat] Error al guardar compra nueva:', e);
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+            setPendingProduct(null);
+          }
+        } else {
+          // venta: now ask for total stock
+          setPendingProduct({ ...pendingProduct, precioVenta: price, step: 'asking-stock' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de venta anotado. ¿Cuántas unidades tienes en total en este momento?`);
+        }
+        return;
+      }
+
+      // Step: asking for total stock (only for venta path)
       if (pendingProduct.step === 'asking-stock') {
         const stockTotal = parseUserNumber(userInput);
         if (stockTotal == null || stockTotal < 0) {
@@ -291,29 +346,27 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           return;
         }
 
-        const { concept, quantity, unitPrice = 0 } = pendingProduct;
-        const total = quantity * unitPrice;
+        const { concept, quantity, precioCompra = 0, precioVenta = 0 } = pendingProduct;
+        const total = quantity * precioVenta;
         const stockRestante = Math.max(0, stockTotal - quantity);
 
         setIsLoading(true);
         try {
           await addDoc(collection(db, 'users', userId, 'sales'), {
-            items: [{ product: concept, quantity, unitPrice, subtotal: total }],
+            items: [{ product: concept, quantity, unitPrice: precioVenta, subtotal: total }],
             total,
             createdAt: serverTimestamp(),
           });
           await addDoc(collection(db, 'users', userId, 'inventario'), {
             nombre: concept,
             cantidad: stockRestante,
-            valorUnitario: unitPrice,
+            precioCompra,
+            precioVenta,
             createdAt: serverTimestamp(),
           });
           addBotMsg(
-            `¡Listo! ${quantity} ${concept} a $${unitPrice.toLocaleString('es-CO')} — Total: $${total.toLocaleString('es-CO')} registrado. También guardé "${concept}" en tu inventario con ${stockRestante} unidades disponibles.`,
-            {
-              saved: true,
-              data: { type: 'venta', amount: total, concept, quantity, unitPrice },
-            }
+            `¡Listo! ${quantity} ${concept} a $${precioVenta.toLocaleString('es-CO')} — Total: $${total.toLocaleString('es-CO')} registrado. Guardé "${concept}" en inventario con ${stockRestante} unidades disponibles.`,
+            { saved: true, data: { type: 'venta', amount: total, concept, quantity, unitPrice: precioVenta } }
           );
         } catch (e) {
           console.error('[Chat] Error al guardar producto nuevo:', e);
@@ -388,8 +441,8 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
         const foundProduct = findInventoryProduct(inventory, concept);
 
         if (foundProduct) {
-          // CASO 1 — Producto encontrado en inventario: usar precio guardado, descontar stock
-          const unitPrice = foundProduct.valorUnitario || 0;
+          // CASO 1 — Producto encontrado en inventario: usar precioVenta guardado, descontar stock
+          const unitPrice = getPrecioVenta(foundProduct);
           const total = quantity * unitPrice;
           const newStock = Math.max(0, (foundProduct.cantidad ?? 0) - quantity);
           try {
@@ -447,45 +500,53 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           return;
         }
 
-        // CASO 3 — No está en inventario y no se mencionó precio: preguntar
-        setPendingProduct({ concept: concept || 'producto', quantity, step: 'asking-price' });
-        addBotMsg(`No tengo "${concept}" guardado en el inventario. ¿A qué precio lo vendiste?`);
+        // CASO 3 — No está en inventario y no se mencionó precio: preguntar ambos precios
+        setPendingProduct({ concept: concept || 'producto', quantity, isCompra: false, step: 'asking-precio-compra' });
+        addBotMsg(`No tengo "${concept}" en el inventario. ¿A qué precio lo compraste tú?`);
         return;
       }
 
       // ── Compra: suma al stock + registra gasto ─────────────────────────────
       if (dataType === 'compra' && response.data) {
         const { concept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
-        const unitPrice = geminiUnitPrice ?? (quantity > 1 ? Math.round(amount / quantity) : amount);
-        const total = quantity * unitPrice;
+        const precioCompra = geminiUnitPrice ?? (quantity > 1 ? Math.round(amount / quantity) : amount);
+        const total = quantity * precioCompra;
         const foundProduct = findInventoryProduct(inventory, concept);
+
+        if (!foundProduct && precioCompra <= 0) {
+          // Nuevo producto sin precio — preguntar precio compra y venta
+          setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, step: 'asking-precio-compra' });
+          addBotMsg(`¿A qué precio compraste ${concept}?`);
+          setIsLoading(false);
+          return;
+        }
+
         try {
           if (foundProduct) {
             await updateDoc(doc(db, 'users', userId, 'inventario', foundProduct.id), {
               cantidad: (foundProduct.cantidad ?? 0) + quantity,
-              ...(unitPrice > 0 ? { valorUnitario: unitPrice } : {}),
+              ...(precioCompra > 0 ? { precioCompra } : {}),
               updatedAt: serverTimestamp(),
             });
           } else {
-            await addDoc(collection(db, 'users', userId, 'inventario'), {
-              nombre: concept,
-              cantidad: quantity,
-              valorUnitario: unitPrice,
-              createdAt: serverTimestamp(),
-            });
+            // Nuevo producto con precio — también necesitamos precioVenta, lo pedimos después
+            setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-precio-venta' });
+            addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} anotada. ¿A qué precio los vendes?`);
+            setIsLoading(false);
+            return;
           }
           await addDoc(collection(db, 'users', userId, 'expenses'), {
             concept: `Compra: ${concept}`,
             amount: total,
             createdAt: serverTimestamp(),
           });
-          const newStock = foundProduct ? (foundProduct.cantidad ?? 0) + quantity : quantity;
+          const newStock = (foundProduct.cantidad ?? 0) + quantity;
           setMessages(prev => [...prev, {
             role: 'model',
             text: `¡Listo! ${quantity} ${concept} sumados al inventario — Stock ahora: ${newStock} unidades. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
             timestamp: new Date(),
             saved: true,
-            data: { type: 'compra', amount: total, concept, quantity, unitPrice },
+            data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra },
           }]);
         } catch (e) {
           console.error('[Chat] Error al guardar compra:', e);

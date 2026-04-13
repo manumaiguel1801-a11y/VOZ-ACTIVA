@@ -102,12 +102,100 @@ FORMATO DE RESPUESTA (JSON estricto):
 }`;
 
 // Models in priority order — falls back if one is unavailable
-const MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
+const MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
-function getClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY no está configurada');
-  return new GoogleGenAI({ apiKey });
+// ─── Key rotation ────────────────────────────────────────────────────────────
+
+function getApiKeys(): string[] {
+  const keys: string[] = [];
+  if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
+  if (process.env.GEMINI_API_KEY_2) keys.push(process.env.GEMINI_API_KEY_2);
+  if (keys.length === 0) throw new Error('No hay GEMINI_API_KEY configurada');
+  return keys;
+}
+
+let currentKeyIndex = 0;
+
+function getClient(index: number): GoogleGenAI {
+  const keys = getApiKeys();
+  return new GoogleGenAI({ apiKey: keys[index % keys.length] });
+}
+
+function is429(error: any): boolean {
+  const s = String(error?.status ?? error?.message ?? error?.code ?? '');
+  return s.includes('429') || s.includes('RESOURCE_EXHAUSTED') || s.includes('quota');
+}
+
+function is503(error: any): boolean {
+  const s = String(error?.status ?? error?.message ?? '');
+  return s.includes('503') || s.includes('UNAVAILABLE');
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+class QuotaExhaustedError extends Error {
+  constructor() { super('quota-exhausted'); }
+}
+
+/**
+ * Tries `fn` with each API key in order.
+ * - On 429: rotates to the next key immediately.
+ * - If ALL keys return 429: throws QuotaExhaustedError (let the caller try the next model).
+ * - On any other error: rethrows immediately.
+ */
+async function tryWithKeys<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
+  const keys = getApiKeys();
+  for (let i = 0; i < keys.length; i++) {
+    const keyIdx = (currentKeyIndex + i) % keys.length;
+    try {
+      const result = await fn(getClient(keyIdx));
+      currentKeyIndex = keyIdx; // remember the working key for next call
+      return result;
+    } catch (error: any) {
+      if (is429(error)) {
+        console.warn(`[Gemini] 429 en key #${keyIdx + 1}${i < keys.length - 1 ? ', rotando...' : ''}`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new QuotaExhaustedError();
+}
+
+/**
+ * Runs `fn` across all models × all keys.
+ * Order: for each model, try all keys. If all models exhaust quota, wait 30 s and retry once.
+ */
+async function withModelAndKeyFallback<T>(
+  fn: (client: GoogleGenAI, model: string) => Promise<T>
+): Promise<T> {
+  const maxRounds = 2;
+
+  for (let round = 0; round < maxRounds; round++) {
+    if (round > 0) {
+      console.warn('[Gemini] Todos los modelos en 429 — esperando 30 s...');
+      await sleep(30_000);
+    }
+    for (const model of MODELS) {
+      try {
+        return await tryWithKeys(client => fn(client, model));
+      } catch (error: any) {
+        if (error instanceof QuotaExhaustedError) {
+          console.warn(`[Gemini] Todas las keys agotadas en ${model}, probando siguiente modelo...`);
+          continue;
+        }
+        if (is503(error)) {
+          console.warn(`[Gemini] ${model} no disponible, probando siguiente modelo...`);
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('Gemini: cuota agotada en todos los modelos y keys.');
 }
 
 const SCHEMA_CONFIG = {
@@ -155,7 +243,7 @@ export type OCRMode = 'ventas-dia' | 'nuevo-stock' | 'fiados-me-deben' | 'fiados
 export interface OCRVentasRow {
   nombre: string;
   unidadesVendidas: number;
-  valorUnitario: number;
+  precioVenta: number;
   total: number;
 }
 
@@ -163,7 +251,7 @@ export interface OCRVentasRow {
 export interface OCRStockRow {
   nombre: string;
   cantidadComprada: number;
-  valorUnitario: number;
+  precioCompra: number;
   total: number;
 }
 
@@ -177,18 +265,18 @@ export interface OCRFiadoRow {
 // ─── OCR Prompts ────────────────────────────────────────────────────────────
 
 const OCR_VENTAS_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un registro de VENTAS DEL DÍA. Extrae TODOS los productos vendidos con las unidades vendidas y su precio unitario. Devuelve ÚNICAMENTE este JSON sin texto adicional:
-{"rows": [{"nombre": "Tintos", "unidadesVendidas": 20, "valorUnitario": 800, "total": 16000}]}
+{"rows": [{"nombre": "Tintos", "unidadesVendidas": 20, "precioVenta": 800, "total": 16000}]}
 REGLAS:
-- total = unidadesVendidas × valorUnitario, calcúlalo tú
+- total = unidadesVendidas × precioVenta, calcúlalo tú
 - Montos en pesos colombianos como número puro sin puntos ni comas ni $
 - k o K = miles: 20k = 20000
 - Si no aparece precio, ponlo en 0
 - Si no encuentras datos devuelve {"rows": []}`;
 
-const OCR_STOCK_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un registro de COMPRA DE MERCANCÍA o factura de proveedor. Extrae TODOS los productos con la cantidad comprada y su precio unitario. Devuelve ÚNICAMENTE este JSON sin texto adicional:
-{"rows": [{"nombre": "Tintos", "cantidadComprada": 100, "valorUnitario": 500, "total": 50000}]}
+const OCR_STOCK_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un registro de COMPRA DE MERCANCÍA o factura de proveedor. Extrae TODOS los productos con la cantidad comprada y su precio de compra por unidad. Devuelve ÚNICAMENTE este JSON sin texto adicional:
+{"rows": [{"nombre": "Tintos", "cantidadComprada": 100, "precioCompra": 500, "total": 50000}]}
 REGLAS:
-- total = cantidadComprada × valorUnitario, calcúlalo tú
+- total = cantidadComprada × precioCompra, calcúlalo tú
 - Montos en pesos colombianos como número puro sin puntos ni comas ni $
 - k o K = miles: 20k = 20000
 - Si no aparece precio, ponlo en 0
@@ -228,10 +316,10 @@ const VENTAS_OCR_SCHEMA = {
           properties: {
             nombre: { type: Type.STRING },
             unidadesVendidas: { type: Type.NUMBER },
-            valorUnitario: { type: Type.NUMBER },
+            precioVenta: { type: Type.NUMBER },
             total: { type: Type.NUMBER },
           },
-          required: ['nombre', 'unidadesVendidas', 'valorUnitario', 'total'],
+          required: ['nombre', 'unidadesVendidas', 'precioVenta', 'total'],
         },
       },
     },
@@ -251,10 +339,10 @@ const STOCK_OCR_SCHEMA = {
           properties: {
             nombre: { type: Type.STRING },
             cantidadComprada: { type: Type.NUMBER },
-            valorUnitario: { type: Type.NUMBER },
+            precioCompra: { type: Type.NUMBER },
             total: { type: Type.NUMBER },
           },
-          required: ['nombre', 'cantidadComprada', 'valorUnitario', 'total'],
+          required: ['nombre', 'cantidadComprada', 'precioCompra', 'total'],
         },
       },
     },
@@ -304,7 +392,6 @@ export async function analyzeImageOCR(
   mimeType: string,
   mode: OCRMode
 ): Promise<OCRVentasRow[] | OCRStockRow[] | OCRFiadoRow[]> {
-  const ai = getClient();
   const prompt = OCR_PROMPTS[mode];
   const schema = OCR_SCHEMAS[mode];
 
@@ -316,48 +403,30 @@ export async function analyzeImageOCR(
     ],
   }];
 
-  for (const model of MODELS) {
-    try {
-      const response = await ai.models.generateContent({ model, contents, config: schema });
-      const parsed = JSON.parse(response.text || '{"rows":[]}');
-      return (parsed.rows ?? []) as OCRVentasRow[] | OCRStockRow[] | OCRFiadoRow[];
-    } catch (error: any) {
-      const status = String(error?.status ?? error?.message ?? '');
-      const isRetryable = status.includes('503') || status.includes('UNAVAILABLE') || status.includes('429');
-      if (isRetryable) { console.warn(`OCR: model ${model} unavailable, trying next...`); continue; }
-      console.error('Gemini OCR error:', error);
-      break;
-    }
+  try {
+    const response = await withModelAndKeyFallback((client, model) =>
+      client.models.generateContent({ model, contents, config: schema })
+    );
+    const parsed = JSON.parse(response.text || '{"rows":[]}');
+    return (parsed.rows ?? []) as OCRVentasRow[] | OCRStockRow[] | OCRFiadoRow[];
+  } catch (error: any) {
+    console.error('Gemini OCR error:', error);
+    return [];
   }
-  return [];
 }
 
 // ─── Chat ───────────────────────────────────────────────────────────────────
 
 export const sendMessageToGemini = async (message: string, history: any[] = []): Promise<ChatResponse> => {
-  const ai = getClient();
   const contents = [...history, { role: 'user', parts: [{ text: message }] }];
 
-  for (const model of MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config: SCHEMA_CONFIG,
-      });
-      return JSON.parse(response.text || '{}') as ChatResponse;
-    } catch (error: any) {
-      const status = error?.status ?? error?.message ?? '';
-      const isRetryable = String(status).includes('503') || String(status).includes('UNAVAILABLE') || String(status).includes('429');
-      if (isRetryable) {
-        console.warn(`Model ${model} unavailable, trying next...`);
-        continue;
-      }
-      // Non-retryable error — bail immediately
-      console.error('Gemini error:', error);
-      break;
-    }
+  try {
+    const response = await withModelAndKeyFallback((client, model) =>
+      client.models.generateContent({ model, contents, config: SCHEMA_CONFIG })
+    );
+    return JSON.parse(response.text || '{}') as ChatResponse;
+  } catch (error: any) {
+    console.error('Gemini error:', error);
+    return { message: "Lo siento, el asistente no está disponible en este momento. Intenta de nuevo en unos segundos." };
   }
-
-  return { message: "Lo siento, el asistente no está disponible en este momento. Intenta de nuevo en unos segundos." };
 };

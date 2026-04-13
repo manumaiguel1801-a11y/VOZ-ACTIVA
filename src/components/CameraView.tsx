@@ -32,7 +32,7 @@ interface VentasEditRow {
   _id: string;
   nombre: string;
   unidadesVendidas: string;
-  valorUnitario: string;
+  precioVenta: string;
 }
 
 /** Nuevo stock: mercancía comprada */
@@ -40,7 +40,7 @@ interface StockEditRow {
   _id: string;
   nombre: string;
   cantidadComprada: string;
-  valorUnitario: string;
+  precioCompra: string;
 }
 
 interface FiadoEditRow {
@@ -55,10 +55,10 @@ let _rid = 0;
 const rid = () => String(++_rid);
 
 const emptyVentasRow = (): VentasEditRow => ({
-  _id: rid(), nombre: '', unidadesVendidas: '0', valorUnitario: '0',
+  _id: rid(), nombre: '', unidadesVendidas: '0', precioVenta: '0',
 });
 const emptyStockRow = (): StockEditRow => ({
-  _id: rid(), nombre: '', cantidadComprada: '0', valorUnitario: '0',
+  _id: rid(), nombre: '', cantidadComprada: '0', precioCompra: '0',
 });
 const emptyFiadoRow = (): FiadoEditRow => ({
   _id: rid(), nombre: '', loDebe: '0', fecha: '', estado: 'pendiente',
@@ -71,10 +71,10 @@ function fmtCOP(n: number): string {
   return n.toLocaleString('es-CO');
 }
 function calcVentasTotal(row: VentasEditRow): number {
-  return parseNum(row.unidadesVendidas) * parseNum(row.valorUnitario);
+  return parseNum(row.unidadesVendidas) * parseNum(row.precioVenta);
 }
 function calcStockTotal(row: StockEditRow): number {
-  return parseNum(row.cantidadComprada) * parseNum(row.valorUnitario);
+  return parseNum(row.cantidadComprada) * parseNum(row.precioCompra);
 }
 
 // ─── Debt helpers (kept from original) ──────────────────────────────────────
@@ -205,7 +205,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           _id: rid(),
           nombre: r.nombre,
           unidadesVendidas: String(r.unidadesVendidas),
-          valorUnitario: String(r.valorUnitario),
+          precioVenta: String(r.precioVenta),
         }));
         setVentasRows(mapped.length ? mapped : [emptyVentasRow()]);
       } else if (mode === 'nuevo-stock') {
@@ -213,7 +213,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           _id: rid(),
           nombre: r.nombre,
           cantidadComprada: String(r.cantidadComprada),
-          valorUnitario: String(r.valorUnitario),
+          precioCompra: String(r.precioCompra),
         }));
         setStockRows(mapped.length ? mapped : [emptyStockRow()]);
       } else {
@@ -247,7 +247,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       for (const row of valid) {
         const nombre = row.nombre.trim();
         const unidadesVendidas = parseNum(row.unidadesVendidas);
-        const valorUnitario = parseNum(row.valorUnitario);
+        const precioVenta = parseNum(row.precioVenta);
 
         const existing = findInventoryProduct(inventory, nombre);
 
@@ -255,7 +255,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           const newCantidad = Math.max(0, (existing.cantidad ?? 0) - unidadesVendidas);
           await updateDoc(doc(db, 'users', userId, 'inventario', existing.id), {
             cantidad: newCantidad,
-            ...(valorUnitario > 0 ? { valorUnitario } : {}),
+            ...(precioVenta > 0 ? { precioVenta } : {}),
             updatedAt: serverTimestamp(),
           });
           updatedCount++;
@@ -264,17 +264,18 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           await addDoc(collection(db, 'users', userId, 'inventario'), {
             nombre,
             cantidad: 0,
-            valorUnitario,
+            precioVenta,
+            precioCompra: 0,
             createdAt: serverTimestamp(),
           });
           createdCount++;
         }
 
         // Registrar ingreso solo si hubo unidades vendidas
-        if (unidadesVendidas > 0 && valorUnitario > 0) {
-          const total = unidadesVendidas * valorUnitario;
+        if (unidadesVendidas > 0 && precioVenta > 0) {
+          const total = unidadesVendidas * precioVenta;
           await addDoc(collection(db, 'users', userId, 'sales'), {
-            items: [{ product: `Venta: ${nombre}`, quantity: unidadesVendidas, unitPrice: valorUnitario, subtotal: total }],
+            items: [{ product: `Venta: ${nombre}`, quantity: unidadesVendidas, unitPrice: precioVenta, subtotal: total }],
             total,
             createdAt: serverTimestamp(),
           });
@@ -307,14 +308,14 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       for (const row of valid) {
         const nombre = row.nombre.trim();
         const cantidadComprada = parseNum(row.cantidadComprada);
-        const valorUnitario = parseNum(row.valorUnitario);
+        const precioCompra = parseNum(row.precioCompra);
 
         const existing = findInventoryProduct(inventory, nombre);
 
         if (existing) {
           await updateDoc(doc(db, 'users', userId, 'inventario', existing.id), {
             cantidad: (existing.cantidad ?? 0) + cantidadComprada,
-            ...(valorUnitario > 0 ? { valorUnitario } : {}),
+            ...(precioCompra > 0 ? { precioCompra } : {}),
             updatedAt: serverTimestamp(),
           });
           updatedCount++;
@@ -322,15 +323,16 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           await addDoc(collection(db, 'users', userId, 'inventario'), {
             nombre,
             cantidad: cantidadComprada,
-            valorUnitario,
+            precioCompra,
+            precioVenta: 0,
             createdAt: serverTimestamp(),
           });
           createdCount++;
         }
 
         // Registrar gasto por la compra
-        if (cantidadComprada > 0 && valorUnitario > 0) {
-          const total = cantidadComprada * valorUnitario;
+        if (cantidadComprada > 0 && precioCompra > 0) {
+          const total = cantidadComprada * precioCompra;
           await addDoc(collection(db, 'users', userId, 'expenses'), {
             concept: `Compra: ${nombre}`,
             amount: total,
@@ -707,7 +709,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                 <tr className="bg-[#B8860B]">
                   <th className={cn(thCls, 'w-[35%]')}>Producto</th>
                   <th className={cn(thCls, 'w-[18%] text-center')}>Un. Vendidas</th>
-                  <th className={cn(thCls, 'w-[22%]')}>Val. Unitario</th>
+                  <th className={cn(thCls, 'w-[22%]')}>Precio Venta</th>
                   <th className={cn(thCls, 'w-[18%]')}>Total</th>
                   <th className="w-[7%]" />
                 </tr>
@@ -724,7 +726,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                     <td className="px-1 py-0.5">
                       <div className="relative">
                         <span className={cn('absolute left-2 top-1/2 -translate-y-1/2 text-xs select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
-                        <input type="number" min="0" value={row.valorUnitario} onChange={(e) => updateVentasRow(row._id, 'valorUnitario', e.target.value)} className={cn(cellInput(isDarkMode), 'pl-5')} />
+                        <input type="number" min="0" value={row.precioVenta} onChange={(e) => updateVentasRow(row._id, 'precioVenta', e.target.value)} className={cn(cellInput(isDarkMode), 'pl-5')} />
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -803,7 +805,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                 <tr className="bg-[#B8860B] text-white">
                   <th className={cn(thCls, 'w-[35%]')}>Producto</th>
                   <th className={cn(thCls, 'w-[18%] text-center')}>Cant. Comprada</th>
-                  <th className={cn(thCls, 'w-[22%]')}>Val. Unitario</th>
+                  <th className={cn(thCls, 'w-[22%]')}>Precio Compra</th>
                   <th className={cn(thCls, 'w-[18%]')}>Total</th>
                   <th className="w-[7%]" />
                 </tr>
@@ -820,7 +822,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                     <td className="px-1 py-0.5">
                       <div className="relative">
                         <span className={cn('absolute left-2 top-1/2 -translate-y-1/2 text-xs select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
-                        <input type="number" min="0" value={row.valorUnitario} onChange={(e) => updateStockRow(row._id, 'valorUnitario', e.target.value)} className={cn(cellInput(isDarkMode), 'pl-5')} />
+                        <input type="number" min="0" value={row.precioCompra} onChange={(e) => updateStockRow(row._id, 'precioCompra', e.target.value)} className={cn(cellInput(isDarkMode), 'pl-5')} />
                       </div>
                     </td>
                     <td className="px-3 py-2">

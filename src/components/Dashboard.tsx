@@ -175,8 +175,8 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               ${weekTotal.toLocaleString('es-CO')}
             </span>
           </div>
-          <div className="h-40 w-full" style={{ minHeight: 160 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <div className="w-full" style={{ height: 160 }}>
+            <ResponsiveContainer width="100%" height={160} minWidth={0}>
               <BarChart data={weeklyData}>
                 <Bar dataKey="value" radius={[10, 10, 0, 0]}>
                   {weeklyData.map((entry, index) => (

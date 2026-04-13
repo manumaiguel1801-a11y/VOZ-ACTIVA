@@ -7,7 +7,7 @@ import {
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cn } from '../lib/utils';
-import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel } from '../types';
+import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel, getPrecioVenta, getPrecioCompra, getMargen } from '../types';
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
@@ -85,13 +85,15 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
   const [showForm, setShowForm] = useState(false);
   const [formNombre, setFormNombre] = useState('');
   const [formCantidad, setFormCantidad] = useState('');
-  const [formValor, setFormValor] = useState('');
+  const [formPrecioCompra, setFormPrecioCompra] = useState('');
+  const [formPrecioVenta, setFormPrecioVenta] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Per-product edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCantidad, setEditCantidad] = useState('');
-  const [editValor, setEditValor] = useState('');
+  const [editPrecioCompra, setEditPrecioCompra] = useState('');
+  const [editPrecioVenta, setEditPrecioVenta] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -105,19 +107,22 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
   const handleAdd = async () => {
     const nombre = formNombre.trim();
     const cantidad = parseFloat(formCantidad) || 0;
-    const valorUnitario = parseFloat(formValor) || 0;
+    const precioCompra = parseFloat(formPrecioCompra) || 0;
+    const precioVenta = parseFloat(formPrecioVenta) || 0;
     if (!nombre) return;
     setSaving(true);
     try {
       await addDoc(collection(db, 'users', userId, 'inventario'), {
         nombre,
         cantidad,
-        valorUnitario,
+        precioCompra,
+        precioVenta,
         createdAt: serverTimestamp(),
       });
       setFormNombre('');
       setFormCantidad('');
-      setFormValor('');
+      setFormPrecioCompra('');
+      setFormPrecioVenta('');
       setShowForm(false);
     } catch (e) {
       console.error('[Inventario] Error al agregar:', e);
@@ -129,13 +134,15 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
   const startEdit = (product: InventoryProduct) => {
     setEditingId(product.id);
     setEditCantidad(String(product.cantidad));
-    setEditValor(String(product.valorUnitario));
+    setEditPrecioCompra(String(getPrecioCompra(product)));
+    setEditPrecioVenta(String(getPrecioVenta(product)));
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditCantidad('');
-    setEditValor('');
+    setEditPrecioCompra('');
+    setEditPrecioVenta('');
   };
 
   const handleSaveEdit = async (product: InventoryProduct) => {
@@ -143,7 +150,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
     try {
       await updateDoc(doc(db, 'users', userId, 'inventario', product.id), {
         cantidad: parseFloat(editCantidad) || 0,
-        valorUnitario: parseFloat(editValor) || 0,
+        precioCompra: parseFloat(editPrecioCompra) || 0,
+        precioVenta: parseFloat(editPrecioVenta) || 0,
         updatedAt: serverTimestamp(),
       });
       setEditingId(null);
@@ -207,7 +215,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                   : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
               )}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="relative">
                 <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
                   Cantidad
@@ -228,18 +236,39 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
               </div>
               <div className="relative">
                 <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
-                  Valor unitario
+                  P. compra
                 </label>
                 <div className="relative">
                   <span className={cn('absolute left-3 top-1/2 -translate-y-1/2 text-sm select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
                   <input
                     type="number"
                     min="0"
-                    value={formValor}
-                    onChange={(e) => setFormValor(e.target.value)}
+                    value={formPrecioCompra}
+                    onChange={(e) => setFormPrecioCompra(e.target.value)}
                     placeholder="0"
                     className={cn(
-                      'w-full h-11 rounded-xl pl-7 pr-4 text-sm outline-none border',
+                      'w-full h-11 rounded-xl pl-7 pr-2 text-sm outline-none border',
+                      isDarkMode
+                        ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                        : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="relative">
+                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+                  P. venta
+                </label>
+                <div className="relative">
+                  <span className={cn('absolute left-3 top-1/2 -translate-y-1/2 text-sm select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formPrecioVenta}
+                    onChange={(e) => setFormPrecioVenta(e.target.value)}
+                    placeholder="0"
+                    className={cn(
+                      'w-full h-11 rounded-xl pl-7 pr-2 text-sm outline-none border',
                       isDarkMode
                         ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
                         : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
@@ -331,10 +360,20 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                   {!isEditing ? (
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <p className="font-bold text-[#B8860B]">${(product.valorUnitario || 0).toLocaleString('es-CO')}</p>
+                        <p className="font-bold text-[#B8860B]">${getPrecioVenta(product).toLocaleString('es-CO')}</p>
                         <p className={cn('text-xs font-bold', lowStock ? 'text-red-400' : 'opacity-50')}>
                           Stock: {product.cantidad ?? 0}
                         </p>
+                        {getPrecioCompra(product) > 0 && (
+                          <p className="text-[10px] opacity-40">
+                            Costo: ${getPrecioCompra(product).toLocaleString('es-CO')}
+                          </p>
+                        )}
+                        {getMargen(product) !== null && (
+                          <p className="text-[10px] font-bold text-green-500">
+                            +{getMargen(product)}% margen
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1">
                         <button
@@ -376,12 +415,25 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                           />
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-bold opacity-40 w-10 text-right">$/u</span>
+                          <span className="text-[10px] font-bold opacity-40 w-10 text-right">$/costo</span>
                           <input
                             type="number"
                             min="0"
-                            value={editValor}
-                            onChange={(e) => setEditValor(e.target.value)}
+                            value={editPrecioCompra}
+                            onChange={(e) => setEditPrecioCompra(e.target.value)}
+                            className={cn(
+                              'w-20 h-7 rounded-lg px-2 text-sm font-bold outline-none border',
+                              isDarkMode ? 'bg-[#2A2A2A] border-white/10 text-[#FDFBF0]' : 'bg-[#FDFBF0] border-black/10',
+                            )}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-bold opacity-40 w-10 text-right">$/venta</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editPrecioVenta}
+                            onChange={(e) => setEditPrecioVenta(e.target.value)}
                             className={cn(
                               'w-20 h-7 rounded-lg px-2 text-sm font-bold outline-none border',
                               isDarkMode ? 'bg-[#2A2A2A] border-white/10 text-[#FDFBF0]' : 'bg-[#FDFBF0] border-black/10',

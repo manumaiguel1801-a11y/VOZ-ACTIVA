@@ -67,9 +67,26 @@ export interface InventoryProduct {
   id: string;
   nombre: string;
   cantidad: number;
-  valorUnitario: number;
+  precioCompra: number;
+  precioVenta: number;
+  valorUnitario?: number; // legacy — kept for backward compat
   createdAt: any;
   updatedAt?: any;
+}
+
+export function getPrecioVenta(p: InventoryProduct): number {
+  return p.precioVenta || p.valorUnitario || 0;
+}
+
+export function getPrecioCompra(p: InventoryProduct): number {
+  return p.precioCompra || 0;
+}
+
+export function getMargen(p: InventoryProduct): number | null {
+  const compra = getPrecioCompra(p);
+  const venta = getPrecioVenta(p);
+  if (!compra || !venta) return null;
+  return Math.round(((venta - compra) / compra) * 100);
 }
 
 export interface UserProfile {
