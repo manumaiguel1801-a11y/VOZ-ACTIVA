@@ -63,6 +63,15 @@ export interface Debt {
   createdAt: any;
 }
 
+export interface InventoryProduct {
+  id: string;
+  nombre: string;
+  cantidad: number;
+  valorUnitario: number;
+  createdAt: any;
+  updatedAt?: any;
+}
+
 export interface UserProfile {
   firstName: string;
   lastName: string;

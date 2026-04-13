@@ -108,7 +108,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </div>
         </div>
         <div className="h-48 w-full" style={{ minHeight: 192 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={weeklyData}>
               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                 {weeklyData.map((entry, index) => (

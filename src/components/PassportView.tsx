@@ -227,7 +227,7 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
       {/* ── Hero: donut + score ── */}
       <section className="flex flex-col items-center pt-4">
         <div className="relative w-56 h-56">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <PieChart>
               <Pie
                 data={chartData}

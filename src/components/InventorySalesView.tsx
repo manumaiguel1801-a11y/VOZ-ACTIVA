@@ -1,20 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import {
   Package, ShoppingBag, Plus, Search,
-  TrendingUp, Box, History, ArrowUpRight
+  TrendingUp, Box, History, ArrowUpRight,
+  Pencil, Trash2, Check, X, Loader2,
 } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { cn } from '../lib/utils';
-import { Sale, getSaleLabel, getSaleQtyLabel } from '../types';
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  stock: number;
-  price: number;
-  category: string;
-}
-
-const INVENTORY: InventoryItem[] = [];
+import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel } from '../types';
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
@@ -34,9 +27,11 @@ function formatRelativeTime(date: Date): string {
 interface Props {
   isDarkMode: boolean;
   sales: Sale[];
+  inventory: InventoryProduct[];
+  userId: string;
 }
 
-export const InventorySalesView = ({ isDarkMode, sales }: Props) => {
+export const InventorySalesView = ({ isDarkMode, sales, inventory, userId }: Props) => {
   const [activeSubTab, setActiveSubTab] = useState<'inventario' | 'ventas'>('inventario');
 
   return (
@@ -69,7 +64,7 @@ export const InventorySalesView = ({ isDarkMode, sales }: Props) => {
       </div>
 
       {activeSubTab === 'inventario' ? (
-        <InventorySection isDarkMode={isDarkMode} />
+        <InventorySection isDarkMode={isDarkMode} inventory={inventory} userId={userId} />
       ) : (
         <SalesSection isDarkMode={isDarkMode} sales={sales} />
       )}
@@ -77,54 +72,354 @@ export const InventorySalesView = ({ isDarkMode, sales }: Props) => {
   );
 };
 
-const InventorySection = ({ isDarkMode }: { isDarkMode: boolean }) => (
-  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-    <div className="flex items-center gap-3">
-      <div className={cn('flex-1 h-12 rounded-xl flex items-center px-4 gap-2 transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
-        <Search className="w-4 h-4 opacity-40" />
-        <input type="text" placeholder="Buscar producto..." className="bg-transparent border-none focus:ring-0 text-sm w-full" />
+// ─── Inventory Section ─────────────────────────────────────────────────────
+
+interface InventorySectionProps {
+  isDarkMode: boolean;
+  inventory: InventoryProduct[];
+  userId: string;
+}
+
+const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionProps) => {
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [formNombre, setFormNombre] = useState('');
+  const [formCantidad, setFormCantidad] = useState('');
+  const [formValor, setFormValor] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Per-product edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCantidad, setEditCantidad] = useState('');
+  const [editValor, setEditValor] = useState('');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const stockBajo = useMemo(() => inventory.filter((p) => (p.cantidad ?? 0) < 5).length, [inventory]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? inventory.filter((p) => p.nombre.toLowerCase().includes(q)) : inventory;
+  }, [inventory, search]);
+
+  const handleAdd = async () => {
+    const nombre = formNombre.trim();
+    const cantidad = parseFloat(formCantidad) || 0;
+    const valorUnitario = parseFloat(formValor) || 0;
+    if (!nombre) return;
+    setSaving(true);
+    try {
+      await addDoc(collection(db, 'users', userId, 'inventario'), {
+        nombre,
+        cantidad,
+        valorUnitario,
+        createdAt: serverTimestamp(),
+      });
+      setFormNombre('');
+      setFormCantidad('');
+      setFormValor('');
+      setShowForm(false);
+    } catch (e) {
+      console.error('[Inventario] Error al agregar:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (product: InventoryProduct) => {
+    setEditingId(product.id);
+    setEditCantidad(String(product.cantidad));
+    setEditValor(String(product.valorUnitario));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditCantidad('');
+    setEditValor('');
+  };
+
+  const handleSaveEdit = async (product: InventoryProduct) => {
+    setUpdatingId(product.id);
+    try {
+      await updateDoc(doc(db, 'users', userId, 'inventario', product.id), {
+        cantidad: parseFloat(editCantidad) || 0,
+        valorUnitario: parseFloat(editValor) || 0,
+        updatedAt: serverTimestamp(),
+      });
+      setEditingId(null);
+    } catch (e) {
+      console.error('[Inventario] Error al actualizar:', e);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteDoc(doc(db, 'users', userId, 'inventario', id));
+    } catch (e) {
+      console.error('[Inventario] Error al eliminar:', e);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Search + Add button */}
+      <div className="flex items-center gap-3">
+        <div className={cn('flex-1 h-12 rounded-xl flex items-center px-4 gap-2 transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+          <Search className="w-4 h-4 opacity-40 flex-shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar producto..."
+            className="bg-transparent border-none focus:ring-0 text-sm w-full outline-none"
+          />
+        </div>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className={cn(
+            'w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-all active:scale-95',
+            showForm ? 'bg-red-500 text-white' : 'bg-[#B8860B] text-black',
+          )}
+        >
+          {showForm ? <X className="w-5 h-5" /> : <Plus className="w-6 h-6" />}
+        </button>
       </div>
-      <button className="w-12 h-12 bg-[#B8860B] text-black rounded-xl flex items-center justify-center shadow-lg">
-        <Plus className="w-6 h-6" />
-      </button>
-    </div>
 
-    <div className="grid grid-cols-2 gap-4">
-      <StatCard label="Productos" value={String(INVENTORY.length)} icon={<Box className={cn(isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60')} />} isDarkMode={isDarkMode} />
-      <StatCard label="Stock Bajo" value="0" icon={<TrendingUp className={cn(isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60')} />} isDarkMode={isDarkMode} />
-    </div>
-
-    <div className="space-y-3">
-      <h3 className="font-bold text-lg px-1">Productos en Stock</h3>
-      {INVENTORY.length === 0 ? (
-        <EmptyState
-          icon={<Package className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />}
-          title="Sin productos aún"
-          subtitle='Toca "+" para agregar tu primer producto'
-          isDarkMode={isDarkMode}
-        />
-      ) : (
-        INVENTORY.map((item) => (
-          <div key={item.id} className={cn('p-4 rounded-xl flex items-center justify-between transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#FFD700]/10 rounded-lg flex items-center justify-center text-[#B8860B]">
-                <Package className="w-5 h-5" />
+      {/* Add form */}
+      {showForm && (
+        <div className={cn('p-5 rounded-2xl space-y-4 border', isDarkMode ? 'bg-[#1A1A1A] border-white/8' : 'bg-white shadow-sm border-black/5')}>
+          <p className="font-black text-[#B8860B] text-sm uppercase tracking-widest">Nuevo producto</p>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={formNombre}
+              onChange={(e) => setFormNombre(e.target.value)}
+              placeholder="Nombre del producto"
+              className={cn(
+                'w-full h-11 rounded-xl px-4 text-sm outline-none border',
+                isDarkMode
+                  ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                  : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+              )}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+                  Cantidad
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formCantidad}
+                  onChange={(e) => setFormCantidad(e.target.value)}
+                  placeholder="0"
+                  className={cn(
+                    'w-full h-11 rounded-xl px-4 text-sm outline-none border',
+                    isDarkMode
+                      ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                      : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+                  )}
+                />
               </div>
-              <div>
-                <p className="font-bold">{item.name}</p>
-                <p className="text-xs opacity-50">{item.category}</p>
+              <div className="relative">
+                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+                  Valor unitario
+                </label>
+                <div className="relative">
+                  <span className={cn('absolute left-3 top-1/2 -translate-y-1/2 text-sm select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formValor}
+                    onChange={(e) => setFormValor(e.target.value)}
+                    placeholder="0"
+                    className={cn(
+                      'w-full h-11 rounded-xl pl-7 pr-4 text-sm outline-none border',
+                      isDarkMode
+                        ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                        : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+                    )}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="text-right">
-              <p className="font-bold text-[#B8860B]">${item.price.toLocaleString()}</p>
-              <p className={cn('text-xs font-bold', item.stock < 10 ? 'text-red-500' : 'opacity-50')}>Stock: {item.stock}</p>
             </div>
           </div>
-        ))
+          <button
+            onClick={handleAdd}
+            disabled={saving || !formNombre.trim()}
+            className={cn(
+              'w-full h-12 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all',
+              saving || !formNombre.trim()
+                ? isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98]',
+            )}
+          >
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : <><Check className="w-4 h-4" /> Guardar producto</>}
+          </button>
+        </div>
       )}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard
+          label="Productos"
+          value={String(inventory.length)}
+          icon={<Box className={cn(isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60')} />}
+          isDarkMode={isDarkMode}
+        />
+        <StatCard
+          label="Stock Bajo"
+          value={String(stockBajo)}
+          icon={<TrendingUp className={cn(stockBajo > 0 ? 'text-red-400' : isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60')} />}
+          isDarkMode={isDarkMode}
+          highlight={stockBajo > 0}
+        />
+      </div>
+
+      {/* Product list */}
+      <div className="space-y-3">
+        <h3 className="font-bold text-lg px-1">Productos en Stock</h3>
+        {inventory.length === 0 ? (
+          <EmptyState
+            icon={<Package className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />}
+            title="Sin productos aún"
+            subtitle='Toca "+" para agregar tu primer producto o sube una foto desde Cámara'
+            isDarkMode={isDarkMode}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={<Search className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />}
+            title="Sin resultados"
+            subtitle="Intenta con otro nombre"
+            isDarkMode={isDarkMode}
+          />
+        ) : (
+          filtered.map((product) => {
+            const isEditing = editingId === product.id;
+            const isUpdating = updatingId === product.id;
+            const isDeleting = deletingId === product.id;
+            const lowStock = (product.cantidad ?? 0) < 5;
+
+            return (
+              <div
+                key={product.id}
+                className={cn(
+                  'rounded-xl overflow-hidden transition-colors',
+                  isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm',
+                  lowStock && !isEditing ? 'border-l-4 border-red-400/70' : '',
+                )}
+              >
+                {/* Main row */}
+                <div className="p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-[#FFD700]/10 rounded-lg flex items-center justify-center text-[#B8860B] flex-shrink-0">
+                      <Package className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{product.nombre}</p>
+                      {lowStock && !isEditing && (
+                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide">Stock bajo</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isEditing ? (
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="font-bold text-[#B8860B]">${(product.valorUnitario || 0).toLocaleString('es-CO')}</p>
+                        <p className={cn('text-xs font-bold', lowStock ? 'text-red-400' : 'opacity-50')}>
+                          Stock: {product.cantidad ?? 0}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => startEdit(product)}
+                          className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90',
+                            isDarkMode ? 'bg-white/8 text-[#FFD700]/70 hover:bg-white/15' : 'bg-[#FFF8DC] text-[#B8860B] hover:bg-[#FFD700]/30',
+                          )}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          disabled={isDeleting}
+                          className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90',
+                            isDeleting ? 'opacity-30' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20',
+                          )}
+                        >
+                          {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Inline edit */
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-bold opacity-40 w-10 text-right">Cant.</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editCantidad}
+                            onChange={(e) => setEditCantidad(e.target.value)}
+                            className={cn(
+                              'w-20 h-7 rounded-lg px-2 text-sm font-bold outline-none border',
+                              isDarkMode ? 'bg-[#2A2A2A] border-white/10 text-[#FDFBF0]' : 'bg-[#FDFBF0] border-black/10',
+                            )}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-bold opacity-40 w-10 text-right">$/u</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editValor}
+                            onChange={(e) => setEditValor(e.target.value)}
+                            className={cn(
+                              'w-20 h-7 rounded-lg px-2 text-sm font-bold outline-none border',
+                              isDarkMode ? 'bg-[#2A2A2A] border-white/10 text-[#FDFBF0]' : 'bg-[#FDFBF0] border-black/10',
+                            )}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => handleSaveEdit(product)}
+                          disabled={isUpdating}
+                          className="w-8 h-8 rounded-lg bg-green-500/20 text-green-500 flex items-center justify-center transition-all active:scale-90"
+                        >
+                          {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90',
+                            isDarkMode ? 'bg-white/8 text-white/50' : 'bg-black/8 text-black/40',
+                          )}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+// ─── Sales Section ─────────────────────────────────────────────────────────
 
 const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[] }) => {
   const todayTotal = useMemo(() => {
@@ -197,13 +492,23 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
   );
 };
 
-const StatCard = ({ label, value, icon, isDarkMode }: { label: string; value: string; icon: React.ReactNode; isDarkMode: boolean }) => (
-  <div className={cn('p-4 rounded-xl transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+// ─── Shared UI ──────────────────────────────────────────────────────────────
+
+const StatCard = ({
+  label, value, icon, isDarkMode, highlight,
+}: {
+  label: string; value: string; icon: React.ReactNode; isDarkMode: boolean; highlight?: boolean;
+}) => (
+  <div className={cn(
+    'p-4 rounded-xl transition-colors',
+    isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm',
+    highlight ? 'border-l-4 border-red-400/70' : '',
+  )}>
     <div className="flex justify-between items-start mb-2">
       <p className="text-xs opacity-50 font-bold uppercase tracking-widest">{label}</p>
       {icon}
     </div>
-    <p className="text-2xl font-black">{value}</p>
+    <p className={cn('text-2xl font-black', highlight ? 'text-red-400' : '')}>{value}</p>
   </div>
 );
 
