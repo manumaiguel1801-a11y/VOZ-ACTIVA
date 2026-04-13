@@ -97,4 +97,6 @@ export interface UserProfile {
   birthDate: string;
   email?: string;
   createdAt: any; // Timestamp
+  telegramChatId?: string;
+  linkCode?: { code: string; expiresAt: any };
 }

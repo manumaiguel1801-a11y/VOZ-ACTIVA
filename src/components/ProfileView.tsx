@@ -9,7 +9,11 @@ import {
   Save,
   Edit2,
   MessageSquare,
-  ChevronRight
+  ChevronRight,
+  Send,
+  CheckCircle2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { UserProfile } from '../types';
@@ -28,6 +32,33 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   const [formData, setFormData] = useState(profile);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generateLinkCode = async () => {
+    if (!auth.currentUser) return;
+    setLinking(true);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { linkCode: { code, expiresAt } });
+      setLinkCode(code);
+    } catch (err) {
+      console.error('Error generating link code:', err);
+      alert('Error al generar el código. Intenta de nuevo.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const copyCode = () => {
+    if (!linkCode) return;
+    navigator.clipboard.writeText(`/vincular ${linkCode}`).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const handleSave = async () => {
     if (!auth.currentUser) return;
@@ -187,6 +218,64 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
         </div>
         <ChevronRight className={cn('w-4 h-4 flex-shrink-0', isDarkMode ? 'text-white/20' : 'text-black/20')} />
       </button>
+
+      {/* Telegram Linking */}
+      <div className={cn(
+        'rounded-2xl p-5 transition-colors duration-500',
+        isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm'
+      )}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-2xl bg-[#229ED9] flex items-center justify-center flex-shrink-0">
+            <Send className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-black text-sm">Registrar por Telegram</p>
+            <p className={cn('text-[11px] font-medium', isDarkMode ? 'text-white/40' : 'text-black/40')}>
+              Envía mensajes de voz o texto desde Telegram
+            </p>
+          </div>
+        </div>
+
+        {profile.telegramChatId ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-green-500/10">
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <p className="text-sm font-bold text-green-600">Cuenta vinculada con Telegram</p>
+          </div>
+        ) : linkCode ? (
+          <div className="space-y-3">
+            <p className={cn('text-xs font-medium', isDarkMode ? 'text-white/60' : 'text-black/60')}>
+              1. Abre Telegram y busca <b>@VozActivaBot</b><br />
+              2. Envía el siguiente comando:
+            </p>
+            <button
+              onClick={copyCode}
+              className={cn(
+                'w-full flex items-center justify-between px-4 py-3 rounded-xl font-mono text-sm font-bold border-2 transition-all active:scale-95',
+                isDarkMode
+                  ? 'bg-[#0D0D0D] border-[#229ED9]/40 text-[#229ED9]'
+                  : 'bg-[#f1f8fd] border-[#229ED9]/30 text-[#229ED9]'
+              )}
+            >
+              <span>/vincular {linkCode}</span>
+              {copied
+                ? <Check className="w-4 h-4 text-green-500" />
+                : <Copy className="w-4 h-4 opacity-60" />}
+            </button>
+            <p className={cn('text-[10px] font-medium text-center', isDarkMode ? 'text-white/30' : 'text-black/30')}>
+              Código válido por 10 minutos · Toca para copiar
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={generateLinkCode}
+            disabled={linking}
+            className="w-full h-11 bg-[#229ED9] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" />
+            {linking ? 'Generando...' : 'Vincular con Telegram'}
+          </button>
+        )}
+      </div>
 
       {showSuggestions && (
         <SuggestionsModal
