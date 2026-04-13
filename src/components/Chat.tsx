@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square, AlertCircle, CreditCard, Package, ArrowDownToLine } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, capitalizar } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
 import { Debt, InventoryProduct, getPrecioVenta } from '../types';
 
@@ -158,12 +158,13 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
     console.warn('[Chat] Monto inválido, no se guarda en Firebase:', data);
     return;
   }
-  const base = { concept: data.concept, amount: data.amount, createdAt: serverTimestamp() };
+  const concept = capitalizar(data.concept);
+  const base = { concept, amount: data.amount, createdAt: serverTimestamp() };
   if (data.type === 'venta') {
     const qty = data.quantity ?? 1;
     const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
     await addDoc(collection(db, 'users', userId, 'sales'), {
-      items: [{ product: data.concept, quantity: qty, unitPrice, subtotal: data.amount }],
+      items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
       total: data.amount,
       createdAt: serverTimestamp(),
     });
@@ -172,13 +173,13 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
   } else if (data.type === 'deuda-me-deben') {
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: data.debtorName || data.concept,
+      name: capitalizar(data.debtorName || data.concept),
       type: 'me-deben',
     });
   } else if (data.type === 'deuda-debo') {
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: data.debtorName || data.concept,
+      name: capitalizar(data.debtorName || data.concept),
       type: 'debo',
     });
   }
@@ -442,13 +443,13 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
               if (dataType === 'pago-deuda-debo') {
                 await addDoc(collection(db, 'users', userId, 'expenses'), {
-                  concept: `Pago deuda: ${matched.name}`,
+                  concept: `Pago deuda: ${capitalizar(matched.name)}`,
                   amount: result.effectivePayment,
                   createdAt: serverTimestamp(),
                 });
               } else {
                 await addDoc(collection(db, 'users', userId, 'sales'), {
-                  items: [{ product: `Cobro: ${matched.name}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
+                  items: [{ product: `Cobro: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
                   total: result.effectivePayment,
                   createdAt: serverTimestamp(),
                 });
@@ -475,7 +476,8 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
 
       // ── Inventory-aware sale handling ───────────────────────────────────────
       if (dataType === 'venta' && response.data) {
-        const { concept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const { concept: rawConcept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const concept = capitalizar(rawConcept);
         const foundProduct = findInventoryProduct(inventory, concept);
 
         if (foundProduct) {
@@ -554,7 +556,8 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
 
       // ── Compra: suma al stock + registra gasto ─────────────────────────────
       if (dataType === 'compra' && response.data) {
-        const { concept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const { concept: rawConcept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const concept = capitalizar(rawConcept);
         const precioCompra = geminiUnitPrice ?? (quantity > 1 ? Math.round(amount / quantity) : amount);
         const total = quantity * precioCompra;
         const foundProduct = findInventoryProduct(inventory, concept);

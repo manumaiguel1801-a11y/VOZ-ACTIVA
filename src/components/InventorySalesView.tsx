@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, capitalizar } from '../lib/utils';
 import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel, getPrecioVenta, getPrecioCompra, getMargen } from '../types';
 
 function getSaleDate(sale: Sale): Date {
@@ -105,7 +105,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
   }, [inventory, search]);
 
   const handleAdd = async () => {
-    const nombre = formNombre.trim();
+    const nombre = capitalizar(formNombre.trim());
     const cantidad = parseFloat(formCantidad) || 0;
     const precioCompra = parseFloat(formPrecioCompra) || 0;
     const precioVenta = parseFloat(formPrecioVenta) || 0;

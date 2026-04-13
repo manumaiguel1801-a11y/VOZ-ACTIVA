@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, capitalizar } from '../lib/utils';
 import { Debt, InventoryProduct } from '../types';
 import { analyzeImageOCR, OCRMode, OCRVentasRow, OCRStockRow, OCRFiadoRow } from '../services/gemini';
 import { MovementDetailModal } from './MovementDetailModal';
@@ -206,7 +206,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       if (mode === 'ventas-dia') {
         const mapped = (rows as OCRVentasRow[]).map((r) => ({
           _id: rid(),
-          nombre: r.nombre,
+          nombre: capitalizar(r.nombre),
           unidadesVendidas: String(r.unidadesVendidas),
           precioVenta: String(r.precioVenta),
         }));
@@ -214,7 +214,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       } else if (mode === 'nuevo-stock') {
         const mapped = (rows as OCRStockRow[]).map((r) => ({
           _id: rid(),
-          nombre: r.nombre,
+          nombre: capitalizar(r.nombre),
           cantidadComprada: String(r.cantidadComprada),
           precioCompra: String(r.precioCompra),
         }));
@@ -222,7 +222,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       } else {
         const mapped = (rows as OCRFiadoRow[]).map((r) => ({
           _id: rid(),
-          nombre: r.nombre,
+          nombre: capitalizar(r.nombre),
           loDebe: String(r.loDebe),
           fecha: r.fecha,
           estado: r.estado,
