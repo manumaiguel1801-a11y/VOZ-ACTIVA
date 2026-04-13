@@ -71,7 +71,7 @@ interface Message {
 const TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   'venta':                 { label: 'Venta registrada',    icon: <ShoppingBag className="w-4 h-4" />,       color: 'text-[#B8860B]' },
   'gasto':                 { label: 'Gasto registrado',    icon: <TrendingDown className="w-4 h-4" />,      color: 'text-red-500' },
-  'compra':                { label: 'Compra registrada',   icon: <ArrowDownToLine className="w-4 h-4" />,   color: 'text-blue-500' },
+  'compra':                { label: 'Compra registrada',   icon: <ArrowDownToLine className="w-4 h-4" />,   color: 'text-[#B8860B]' },
   'deuda-me-deben':        { label: 'Deuda a cobrar',      icon: <UserPlus className="w-4 h-4" />,          color: 'text-[#B8860B]' },
   'deuda-debo':            { label: 'Deuda registrada',    icon: <UserMinus className="w-4 h-4" />,         color: 'text-orange-500' },
   'pago-deuda-debo':       { label: 'Pago de deuda',       icon: <CreditCard className="w-4 h-4" />,        color: 'text-green-500' },

@@ -780,7 +780,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-black text-lg text-blue-500">Nuevo stock detectado</p>
+            <p className="font-black text-lg text-[#B8860B]">Nuevo stock detectado</p>
             <p className={cn('text-xs', isDarkMode ? 'text-white/40' : 'text-black/40')}>
               {stockRows.length} {stockRows.length === 1 ? 'producto' : 'productos'} · Edita si es necesario
             </p>
@@ -800,7 +800,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse">
               <thead>
-                <tr className="bg-blue-600">
+                <tr className="bg-[#B8860B] text-white">
                   <th className={cn(thCls, 'w-[35%]')}>Producto</th>
                   <th className={cn(thCls, 'w-[18%] text-center')}>Cant. Comprada</th>
                   <th className={cn(thCls, 'w-[22%]')}>Val. Unitario</th>
@@ -824,7 +824,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={cn('text-sm font-bold', calcStockTotal(row) > 0 ? 'text-blue-500' : isDarkMode ? 'text-white/20' : 'text-black/20')}>
+                      <span className={cn('text-sm font-bold', calcStockTotal(row) > 0 ? 'text-[#B8860B]' : isDarkMode ? 'text-white/20' : 'text-black/20')}>
                         ${fmtCOP(calcStockTotal(row))}
                       </span>
                     </td>
@@ -840,23 +840,23 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
             </table>
           </div>
           <button onClick={() => setStockRows((prev) => [...prev, emptyStockRow()])}
-            className={cn('w-full py-3 flex items-center justify-center gap-2 text-sm font-bold transition-all border-t', isDarkMode ? 'border-white/5 text-white/30 hover:text-blue-400 hover:bg-white/3' : 'border-black/5 text-black/30 hover:text-blue-500 hover:bg-black/2')}>
+            className={cn('w-full py-3 flex items-center justify-center gap-2 text-sm font-bold transition-all border-t', isDarkMode ? 'border-white/5 text-white/30 hover:text-[#FFD700] hover:bg-white/3' : 'border-black/5 text-black/30 hover:text-[#B8860B] hover:bg-black/2')}>
             <Plus className="w-4 h-4" /> Agregar fila
           </button>
         </div>
 
-        <div className={cn('px-5 py-4 rounded-xl flex justify-between items-center', isDarkMode ? 'bg-blue-500/10' : 'bg-blue-50')}>
+        <div className={cn('px-5 py-4 rounded-xl flex justify-between items-center', isDarkMode ? 'bg-[#FFD700]/10' : 'bg-[#FFF8DC]')}>
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">Total compra</p>
             <p className="text-xs opacity-40 mt-0.5">{stockRows.filter((r) => parseNum(r.cantidadComprada) > 0).length} producto(s) a reponer</p>
           </div>
-          <span className={cn('text-3xl font-black', totalCompra > 0 ? 'text-blue-500' : isDarkMode ? 'text-white/20' : 'text-black/20')}>${fmtCOP(totalCompra)}</span>
+          <span className={cn('text-3xl font-black', totalCompra > 0 ? 'text-[#B8860B]' : isDarkMode ? 'text-white/20' : 'text-black/20')}>${fmtCOP(totalCompra)}</span>
         </div>
 
         <button onClick={handleSaveStock} disabled={isSaving || !stockRows.some((r) => r.nombre.trim())}
           className={cn('w-full h-14 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all duration-300',
             isSaving ? isDarkMode ? 'bg-white/10 text-white/40' : 'bg-black/10 text-black/30'
-              : stockRows.some((r) => r.nombre.trim()) ? 'bg-gradient-to-r from-blue-600 to-blue-400 text-white shadow-lg active:scale-[0.98]'
+              : stockRows.some((r) => r.nombre.trim()) ? 'bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98]'
               : isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed')}>
           {isSaving ? <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</> : <><TrendingDown className="w-5 h-5" /> Confirmar compra</>}
         </button>
