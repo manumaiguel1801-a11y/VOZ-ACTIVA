@@ -67,6 +67,9 @@ const emptyFiadoRow = (): FiadoEditRow => ({
 function parseNum(s: string): number {
   return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
 }
+
+const esMontoValido = (v: unknown): v is number =>
+  typeof v === 'number' && !isNaN(v) && isFinite(v) && v > 0;
 function fmtCOP(n: number): string {
   return n.toLocaleString('es-CO');
 }
@@ -271,9 +274,10 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           createdCount++;
         }
 
-        // Registrar ingreso solo si hubo unidades vendidas
+        // Registrar ingreso solo si hubo unidades vendidas y montos válidos
         if (unidadesVendidas > 0 && precioVenta > 0) {
           const total = unidadesVendidas * precioVenta;
+          if (!esMontoValido(total)) continue;
           await addDoc(collection(db, 'users', userId, 'sales'), {
             items: [{ product: `Venta: ${nombre}`, quantity: unidadesVendidas, unitPrice: precioVenta, subtotal: total }],
             total,
@@ -333,6 +337,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
         // Registrar gasto por la compra
         if (cantidadComprada > 0 && precioCompra > 0) {
           const total = cantidadComprada * precioCompra;
+          if (!esMontoValido(total)) continue;
           await addDoc(collection(db, 'users', userId, 'expenses'), {
             concept: `Compra: ${nombre}`,
             amount: total,
@@ -365,6 +370,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       const valid = fiadoRows.filter((r) => r.nombre.trim());
       for (const row of valid) {
         const monto = parseNum(row.loDebe);
+        if (!esMontoValido(monto) && monto !== 0) continue;
         const isPagado = row.estado === 'pagado';
         await addDoc(collection(db, 'users', userId, 'debts'), {
           name: row.nombre.trim(),

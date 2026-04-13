@@ -19,6 +19,9 @@ const TIME_FILTERS: { label: string; value: TimeFilter }[] = [
 
 const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
+const montoValido = (v: unknown): v is number =>
+  typeof v === 'number' && !isNaN(v) && isFinite(v);
+
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
 }
@@ -67,10 +70,12 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
     let todayExpenses = 0;
     let totalBalance = 0;
     sales.forEach((s) => {
+      if (!montoValido(s.total)) return;
       totalBalance += s.total;
       if (getSaleDate(s) >= midnight) todayIncome += s.total;
     });
     expenses.forEach((e) => {
+      if (!montoValido(e.amount)) return;
       const d = e.createdAt?.toDate ? e.createdAt.toDate() : new Date();
       totalBalance -= e.amount;
       if (d >= midnight) todayExpenses += e.amount;
@@ -96,6 +101,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
       };
     });
     sales.forEach((s) => {
+      if (!montoValido(s.total)) return;
       const d = getSaleDate(s);
       const dayTs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const entry = result.find((r) => r.ts === dayTs);

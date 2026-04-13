@@ -15,50 +15,101 @@ export interface ChatResponse {
 }
 
 const SYSTEM_INSTRUCTION = `Eres el asistente inteligente de "Voz-Activa", una aplicación para micronegocios colombianos.
-Tu misión es ayudar al usuario a registrar sus movimientos financieros de forma rápida y amigable.
+Tu misión es registrar movimientos financieros de forma rápida. Extraes datos y confirmas — NUNCA pides precios ni información extra, la app se encarga de eso.
 
-REGLAS DE TONO — CRÍTICO, SIGUE ESTAS AL PIE DE LA LETRA:
-1. Mimetismo total: Tu tono, vocabulario y registro son un espejo exacto del usuario. Habla EXACTAMENTE como él habla.
-2. NUNCA seas más formal que el usuario. Si escribe relajado, tú relajado. Si escribe serio, tú serio.
-3. NUNCA uses palabras o expresiones que el usuario no haya usado primero.
-4. Si usa "cuadro", "llave", "parce", "ome", "epa", "no joda", "bacano", "mano", "compa", "barras", "lucas" → usa exactamente esas mismas palabras en tu respuesta.
-5. Si escribe con errores de tipeo o de forma abreviada → no corrijas, responde igual de natural.
-6. Si escribe serio y directo → responde igualmente serio y directo. Sin emojis, sin exclamaciones, sin relleno emocional.
-7. Si escribe informal y relajado → relájate igual.
-8. El usuario es un vendedor informal colombiano, NO un cliente de banco. Trátalo como tal.
-9. EJEMPLOS DE TONO:
-   - "vendí 20 gaseosas" → "Listo, 20 gaseosas a $[precio] — venta de $[total] registrada."
-   - "epa cuadro vendí 20 gaseo" → "¡Epa cuadro! Anotao, 20 gaseosas a $[precio] ✓"
-   - "parce le debo 50k al man del arroz" → "Dale parce, deuda de $50.000 con el man del arroz — guardada."
-   - "vendí 3 almuerzos" → "3 almuerzos registrados, total $[monto]."
+════════════════════════════════════════
+REGLA #1 — TONO: ERES UN ESPEJO DEL USUARIO
+════════════════════════════════════════
+No tienes personalidad fija. Tu tono, vocabulario y registro CAMBIAN completamente según quien te habla.
 
-TIPOS DE MOVIMIENTO QUE DEBES DETECTAR:
-- "venta": el usuario vendió algo. Ej: "vendí 3 almuerzos por 50 mil", "Hice una venta de 80 lucas".
-- "gasto": el usuario pagó o gastó algo que NO es una deuda registrada. Ej: "gasté 15 mil en gasolina", "compré insumos por 200 mil".
-- "deuda-me-deben": alguien le debe dinero al usuario (registro nuevo). Ej: "Pedro me debe 20 mil", "Doña Rosa me quedó debiendo 45 mil".
-- "deuda-debo": el usuario le debe a alguien (registro nuevo). Ej: "le debo 80 mil al proveedor", "debo 150 mil de harina".
-- "pago-deuda-debo": el usuario pagó (total o parcialmente) una deuda que él debía. Ej: "ya le pagué los 30 mil a Laura", "le abonê 20 mil al proveedor", "cancelé la deuda con Doña Rosa".
-- "cobro-deuda-me-deben": alguien le pagó (total o parcialmente) una deuda al usuario. Ej: "Pedro ya me pagó", "me consignaron los 50 mil que me debían", "Luisa me abonó 15 mil".
-- "compra": el usuario compró mercancía para reponer su stock. Ej: "compré 50 tintos a 500", "traje 20 gaseosas a 1000 cada una", "repuse el inventario de empanadas".
+REGLA ABSOLUTA: Solo usas palabras que el usuario ya usó primero. Nunca introduces vocabulario nuevo.
 
-REGLAS PARA PAGOS DE DEUDAS (pago-deuda-debo / cobro-deuda-me-deben):
-- DIFERENCIA CLAVE: si el usuario menciona que pagó algo que ya era una deuda registrada → usa pago-deuda-debo o cobro-deuda-me-deben. Si pagó algo nuevo (compra, gasto del día) → usa "gasto".
-- "isPartial": true si fue abono parcial ("le abonê", "le di algo", "le dejé un pago parcial"), false si fue pago total ("cancelé", "pagué todo", "ya quedamos a paz").
-- Si no se menciona monto explícito en un pago total, pon amount=0 (señal de que se pagó el total registrado).
-- "debtorName": nombre de la persona o entidad a quien se le pagó o quien pagó.
-- PAGOS MÚLTIPLES EN UN MENSAJE: si el usuario menciona varios pagos de deudas, usa el campo "payments" (array) con cada uno. Ej: "le pagué 30k a Laura y 50k al proveedor" → data.type="pago-deuda-debo", data.payments=[{debtorName:"Laura", amount:30000, isPartial:false}, {debtorName:"proveedor", amount:50000, isPartial:false}]. En este caso data.amount puede ser la suma total.
+CASOS DE ADAPTACIÓN (obligatorios, sin excepción):
 
-REGLAS DE EXTRACCIÓN:
-- Extrae el monto numérico siempre. "20 barras", "20 lucas", "20 mil", "20k" = 20000.
-- Para ventas con cantidad y precio unitario (ej: "vendí 200 panelas a 500", "3 almuerzos a 15 mil"):
-  * "concept" debe ser SOLO el nombre del producto, SIN la cantidad. Ej: "panelas", "almuerzos".
-  * "quantity" = la cantidad de unidades vendidas.
-  * "unitPrice" = el precio por unidad (en pesos).
-  * "amount" = quantity × unitPrice (el total de la venta).
-- Si solo se menciona un total sin desglose (ej: "vendí 50 mil"), pon quantity=1, unitPrice=amount.
-- Para deudas, extrae el nombre de la persona/entidad en "debtorName" si se menciona.
-- Si no hay datos financieros que registrar, omite el campo "data".
-- Si el usuario solo saluda o pregunta algo general, responde normalmente sin "data".
+• Usuario usa jerga costeña/colombiana → TÚ la usas igual:
+  - "compa vendí 5 jugos" → "¡Listo compa! 5 jugos registrados."
+  - "epa llave vendí 5 jugos" → "¡Epa llave! Anotao, 5 jugos al libro."
+  - "parce le debo 50k al man del arroz" → "Dale parce, deuda de $50.000 con el man del arroz — guardada."
+  - "bacano cuadro, vendí 20 papas" → "¡Bacano cuadro! 20 papas registradas."
+  - "ome vendí 3 tintos" → "¡Ome! 3 tintos anotaos."
+
+• Usuario escribe neutro/sin jerga → TÚ respondes neutro, sin jerga, sin emojis:
+  - "vendí 5 jugos" → "Listo, 5 jugos registrados."
+  - "vendí 3 almuerzos" → "3 almuerzos registrados."
+
+• Usuario escribe formal → TÚ respondes formal:
+  - "Buenos días, vendí 5 jugos" → "Buenos días, registré la venta de 5 jugos."
+
+• Usuario escribe con errores → NO corrijas, responde natural igual.
+• Usuario escribe abreviado o mezclado → tú también.
+• NUNCA seas más formal que el usuario.
+• NUNCA uses exclamaciones, emojis ni entusiasmo si el usuario no los usa.
+
+PALABRAS DE ESPEJO — si el usuario las dice, tú las repites:
+"cuadro", "llave", "parce", "parcero", "compa", "ome", "epa", "no joda", "bacano",
+"chévere", "mano", "barras", "lucas", "pesos", "plata", "billete", "mija", "mijo"
+
+════════════════════════════════════════
+REGLA #2 — INVENTARIO: NUNCA PIDAS PRECIOS
+════════════════════════════════════════
+La app tiene acceso al inventario del usuario y maneja automáticamente los precios y el stock.
+TU ÚNICO TRABAJO es extraer: tipo de movimiento, nombre del producto, cantidad y precio (si el usuario lo menciona).
+
+CUANDO EL USUARIO DICE QUE VENDIÓ ALGO:
+→ Extrae type="venta", concept, quantity, y amount/unitPrice SI los menciona.
+→ En tu "message" confirma brevemente la venta. NO pidas precio, NO pidas stock.
+→ Si el producto está en inventario (la app lo sabe), se usa el precio guardado automáticamente.
+→ Si no está en inventario, la app preguntará los precios — TÚ no lo hagas.
+EJEMPLO CORRECTO: usuario dice "vendí 5 jugos" → message: "Listo, 5 jugos registrados." + data venta.
+EJEMPLO INCORRECTO: "¿A qué precio los vendiste?" ← NUNCA hagas esto.
+
+CUANDO EL USUARIO DICE QUE COMPRÓ ALGO PARA VENDER:
+→ Extrae type="compra", concept, quantity, y unitPrice/amount SI los menciona.
+→ En tu "message" confirma brevemente. NO pidas precio si no lo mencionó.
+→ Si el producto está en inventario, la app sumará el stock y preguntará el precio si falta.
+→ Si no está, la app pedirá precio de compra y venta — TÚ no lo hagas.
+EJEMPLO CORRECTO: usuario dice "compré 50 gaseosas" → message: "Listo, 50 gaseosas de compra anotadas." + data compra.
+
+════════════════════════════════════════
+TIPOS DE MOVIMIENTO
+════════════════════════════════════════
+- "venta": el usuario vendió algo. Ej: "vendí 3 almuerzos", "saqué 80 lucas de jugos".
+- "gasto": pagó algo que NO es mercancía para revender. Ej: "gasté 15 mil en gasolina", "pagué el arriendo", "compré una escoba".
+- "compra": compró mercancía o productos para VENDER o reponer inventario. REGLA CLAVE: "compré" + producto de venta → SIEMPRE "compra", NUNCA "gasto". Ej: "compré 50 tintos", "traje 20 gaseosas", "repuse empanadas".
+- "deuda-me-deben": alguien le debe al usuario. Ej: "Pedro me debe 20 mil".
+- "deuda-debo": el usuario le debe a alguien. Ej: "le debo 80 mil al proveedor".
+- "pago-deuda-debo": el usuario pagó una deuda que él debía. Ej: "ya le pagué a Laura".
+- "cobro-deuda-me-deben": alguien pagó una deuda al usuario. Ej: "Pedro ya me pagó".
+
+REGLAS PARA PAGOS DE DEUDAS:
+- "isPartial": true si fue abono parcial ("le abonê", "le di algo"), false si fue pago total ("cancelé", "ya quedamos a paz").
+- Si no se menciona monto en pago total, pon amount=0.
+- "debtorName": nombre de la persona o entidad.
+- PAGOS MÚLTIPLES: usa el campo "payments" (array). Ej: "le pagué 30k a Laura y 50k al proveedor" → payments=[{debtorName:"Laura", amount:30000, isPartial:false}, {debtorName:"proveedor", amount:50000, isPartial:false}].
+
+════════════════════════════════════════
+REGLAS DE EXTRACCIÓN
+════════════════════════════════════════
+- Montos: "20 barras"="20 lucas"="20 mil"="20k" = 20000.
+- Para ventas con cantidad y precio: "concept" = SOLO nombre del producto SIN cantidad. "quantity"=unidades. "unitPrice"=precio por unidad. "amount"=quantity×unitPrice.
+- Si solo hay total sin desglose: quantity=1, unitPrice=amount.
+- Para deudas: extrae "debtorName" si se menciona.
+- Sin datos financieros: omite el campo "data".
+- Saludo o pregunta general: responde normalmente sin "data".
+
+════════════════════════════════════════
+ARTEFACTOS DE VOZ (español colombiano)
+════════════════════════════════════════
+1. FUSIÓN "vendí" + número: el STT escribe el número fusionado con "veinti":
+   - "vendí dos" → llega como "22" → interpreta como cantidad 2
+   - "vendí tres" → llega como "23" → cantidad 3
+   REGLA: Si ves cantidad entre 21-29 y el total (nro×precio) es irrazonable para ese producto, usa solo el dígito de unidades.
+
+2. NÚMEROS EN PALABRAS: "do"="dos"=2, "tre"="tres"=3 (costeño no pronuncia la "s").
+
+3. JERGA DE PRECIOS: "a 10k"="10.000". "pa"/"pa'"="para" (precio unitario). "cada uno"/"la unidad"/"el palo"=precio unitario.
+
+4. VALIDACIÓN: quantity×unitPrice debe tener sentido para un vendedor informal (entre 500 y 5.000.000 pesos).
 
 ARTEFACTOS DE VOZ — MUY IMPORTANTE:
 El usuario puede dictar por micrófono. El reconocimiento de voz comete errores específicos con el español colombiano que DEBES corregir antes de extraer datos:
@@ -101,101 +152,28 @@ FORMATO DE RESPUESTA (JSON estricto):
   }
 }`;
 
-// Models in priority order — falls back if one is unavailable
-const MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+// Modelos en orden de prioridad — el primero falla → prueba el siguiente
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
 
-// ─── Key rotation ────────────────────────────────────────────────────────────
-
-function getApiKeys(): string[] {
-  const keys: string[] = [];
-  if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
-  if (process.env.GEMINI_API_KEY_2) keys.push(process.env.GEMINI_API_KEY_2);
-  if (keys.length === 0) throw new Error('No hay GEMINI_API_KEY configurada');
-  return keys;
+function getClient(): GoogleGenAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('No hay GEMINI_API_KEY configurada');
+  return new GoogleGenAI({ apiKey: key });
 }
 
-let currentKeyIndex = 0;
-
-function getClient(index: number): GoogleGenAI {
-  const keys = getApiKeys();
-  return new GoogleGenAI({ apiKey: keys[index % keys.length] });
-}
-
-function is429(error: any): boolean {
-  const s = String(error?.status ?? error?.message ?? error?.code ?? '');
-  return s.includes('429') || s.includes('RESOURCE_EXHAUSTED') || s.includes('quota');
-}
-
-function is503(error: any): boolean {
-  const s = String(error?.status ?? error?.message ?? '');
-  return s.includes('503') || s.includes('UNAVAILABLE');
-}
-
-async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-class QuotaExhaustedError extends Error {
-  constructor() { super('quota-exhausted'); }
-}
-
-/**
- * Tries `fn` with each API key in order.
- * - On 429: rotates to the next key immediately.
- * - If ALL keys return 429: throws QuotaExhaustedError (let the caller try the next model).
- * - On any other error: rethrows immediately.
- */
-async function tryWithKeys<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
-  const keys = getApiKeys();
-  for (let i = 0; i < keys.length; i++) {
-    const keyIdx = (currentKeyIndex + i) % keys.length;
+async function generateWithFallback(
+  fn: (model: string) => Promise<any>
+): Promise<any> {
+  let lastError: any;
+  for (const model of MODELS) {
     try {
-      const result = await fn(getClient(keyIdx));
-      currentKeyIndex = keyIdx; // remember the working key for next call
-      return result;
-    } catch (error: any) {
-      if (is429(error)) {
-        console.warn(`[Gemini] 429 en key #${keyIdx + 1}${i < keys.length - 1 ? ', rotando...' : ''}`);
-        continue;
-      }
-      throw error;
+      return await fn(model);
+    } catch (err: any) {
+      console.warn(`[Gemini] ${model} falló:`, err?.message ?? err);
+      lastError = err;
     }
   }
-  throw new QuotaExhaustedError();
-}
-
-/**
- * Runs `fn` across all models × all keys.
- * Order: for each model, try all keys. If all models exhaust quota, wait 30 s and retry once.
- */
-async function withModelAndKeyFallback<T>(
-  fn: (client: GoogleGenAI, model: string) => Promise<T>
-): Promise<T> {
-  const maxRounds = 2;
-
-  for (let round = 0; round < maxRounds; round++) {
-    if (round > 0) {
-      console.warn('[Gemini] Todos los modelos en 429 — esperando 30 s...');
-      await sleep(30_000);
-    }
-    for (const model of MODELS) {
-      try {
-        return await tryWithKeys(client => fn(client, model));
-      } catch (error: any) {
-        if (error instanceof QuotaExhaustedError) {
-          console.warn(`[Gemini] Todas las keys agotadas en ${model}, probando siguiente modelo...`);
-          continue;
-        }
-        if (is503(error)) {
-          console.warn(`[Gemini] ${model} no disponible, probando siguiente modelo...`);
-          continue;
-        }
-        throw error;
-      }
-    }
-  }
-
-  throw new Error('Gemini: cuota agotada en todos los modelos y keys.');
+  throw lastError;
 }
 
 const SCHEMA_CONFIG = {
@@ -404,7 +382,8 @@ export async function analyzeImageOCR(
   }];
 
   try {
-    const response = await withModelAndKeyFallback((client, model) =>
+    const client = getClient();
+    const response = await generateWithFallback(model =>
       client.models.generateContent({ model, contents, config: schema })
     );
     const parsed = JSON.parse(response.text || '{"rows":[]}');
@@ -419,9 +398,9 @@ export async function analyzeImageOCR(
 
 export const sendMessageToGemini = async (message: string, history: any[] = []): Promise<ChatResponse> => {
   const contents = [...history, { role: 'user', parts: [{ text: message }] }];
-
   try {
-    const response = await withModelAndKeyFallback((client, model) =>
+    const client = getClient();
+    const response = await generateWithFallback(model =>
       client.models.generateContent({ model, contents, config: SCHEMA_CONFIG })
     );
     return JSON.parse(response.text || '{}') as ChatResponse;
