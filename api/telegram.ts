@@ -26,8 +26,6 @@ interface TelegramMessage {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.status(200).end(); // Respond to Telegram immediately to avoid retries
-
   if (req.method !== 'POST') return;
 
   const message = (req.body as { message?: TelegramMessage }).message;
@@ -72,6 +70,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error('[telegram] Error:', err);
     try { await sendTelegram(chatId, '⚠️ Hubo un error. Intenta de nuevo.'); } catch (_) { /* ignore */ }
+  } finally {
+    res.status(200).end();
   }
 }
 
