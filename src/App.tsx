@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Tab, UserProfile, Sale, Expense, Debt } from './types';
+import { Tab, UserProfile, Sale, Expense, Debt, InventoryProduct } from './types';
 
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -20,6 +20,7 @@ export default function App() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('inicio');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -77,6 +78,15 @@ export default function App() {
     }, console.error);
   }, [user]);
 
+  // Inventory
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'users', user.uid, 'inventario'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      setInventory(snap.docs.map((d) => ({ id: d.id, ...d.data() } as InventoryProduct)));
+    }, console.error);
+  }, [user]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FDFBF0]">
@@ -96,6 +106,7 @@ export default function App() {
       userName={profile ? `Hola, ${profile.firstName}` : 'Bienvenido'}
       userId={user.uid}
       debts={debts}
+      inventory={inventory}
     >
       <AnimatePresence mode="wait">
         {activeTab === 'inicio' && (
@@ -110,12 +121,12 @@ export default function App() {
         )}
         {activeTab === 'camara' && (
           <motion.div key="camera" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <CameraView isDarkMode={isDarkMode} debts={debts} />
+            <CameraView isDarkMode={isDarkMode} debts={debts} userId={user.uid} inventory={inventory} />
           </motion.div>
         )}
         {activeTab === 'inventario' && (
           <motion.div key="inventario" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <InventorySalesView isDarkMode={isDarkMode} sales={sales} />
+            <InventorySalesView isDarkMode={isDarkMode} sales={sales} inventory={inventory} userId={user.uid} />
           </motion.div>
         )}
         {activeTab === 'pasaporte' && (

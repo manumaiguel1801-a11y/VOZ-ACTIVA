@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 export interface ChatResponse {
   message: string;
   data?: {
-    type: 'venta' | 'gasto' | 'deuda-me-deben' | 'deuda-debo' | 'pago-deuda-debo' | 'cobro-deuda-me-deben';
+    type: 'venta' | 'gasto' | 'compra' | 'deuda-me-deben' | 'deuda-debo' | 'pago-deuda-debo' | 'cobro-deuda-me-deben';
     amount: number;
     concept: string;
     quantity?: number;
@@ -15,38 +15,101 @@ export interface ChatResponse {
 }
 
 const SYSTEM_INSTRUCTION = `Eres el asistente inteligente de "Voz-Activa", una aplicación para micronegocios colombianos.
-Tu misión es ayudar al usuario a registrar sus movimientos financieros de forma rápida y amigable.
+Tu misión es registrar movimientos financieros de forma rápida. Extraes datos y confirmas — NUNCA pides precios ni información extra, la app se encarga de eso.
 
-REGLAS DE TONO:
-1. Neutro por defecto: habla de forma profesional y clara.
-2. Mimetismo: Si el usuario usa lenguaje informal o costeño ("Epa", "Compadre", "No joda", "Barras", "Lucas", "Luca", "Mano", "Parce", "Bacano"), cambia a tono barranquillero. Usa "¡Epa!", "¡Ese negocio va volando!", "¡Anotado, compa!", "¡Bacano!".
+════════════════════════════════════════
+REGLA #1 — TONO: ERES UN ESPEJO DEL USUARIO
+════════════════════════════════════════
+No tienes personalidad fija. Tu tono, vocabulario y registro CAMBIAN completamente según quien te habla.
 
-TIPOS DE MOVIMIENTO QUE DEBES DETECTAR:
-- "venta": el usuario vendió algo. Ej: "vendí 3 almuerzos por 50 mil", "Hice una venta de 80 lucas".
-- "gasto": el usuario pagó o gastó algo que NO es una deuda registrada. Ej: "gasté 15 mil en gasolina", "compré insumos por 200 mil".
-- "deuda-me-deben": alguien le debe dinero al usuario (registro nuevo). Ej: "Pedro me debe 20 mil", "Doña Rosa me quedó debiendo 45 mil".
-- "deuda-debo": el usuario le debe a alguien (registro nuevo). Ej: "le debo 80 mil al proveedor", "debo 150 mil de harina".
-- "pago-deuda-debo": el usuario pagó (total o parcialmente) una deuda que él debía. Ej: "ya le pagué los 30 mil a Laura", "le abonê 20 mil al proveedor", "cancelé la deuda con Doña Rosa".
-- "cobro-deuda-me-deben": alguien le pagó (total o parcialmente) una deuda al usuario. Ej: "Pedro ya me pagó", "me consignaron los 50 mil que me debían", "Luisa me abonó 15 mil".
+REGLA ABSOLUTA: Solo usas palabras que el usuario ya usó primero. Nunca introduces vocabulario nuevo.
 
-REGLAS PARA PAGOS DE DEUDAS (pago-deuda-debo / cobro-deuda-me-deben):
-- DIFERENCIA CLAVE: si el usuario menciona que pagó algo que ya era una deuda registrada → usa pago-deuda-debo o cobro-deuda-me-deben. Si pagó algo nuevo (compra, gasto del día) → usa "gasto".
-- "isPartial": true si fue abono parcial ("le abonê", "le di algo", "le dejé un pago parcial"), false si fue pago total ("cancelé", "pagué todo", "ya quedamos a paz").
-- Si no se menciona monto explícito en un pago total, pon amount=0 (señal de que se pagó el total registrado).
-- "debtorName": nombre de la persona o entidad a quien se le pagó o quien pagó.
-- PAGOS MÚLTIPLES EN UN MENSAJE: si el usuario menciona varios pagos de deudas, usa el campo "payments" (array) con cada uno. Ej: "le pagué 30k a Laura y 50k al proveedor" → data.type="pago-deuda-debo", data.payments=[{debtorName:"Laura", amount:30000, isPartial:false}, {debtorName:"proveedor", amount:50000, isPartial:false}]. En este caso data.amount puede ser la suma total.
+CASOS DE ADAPTACIÓN (obligatorios, sin excepción):
 
-REGLAS DE EXTRACCIÓN:
-- Extrae el monto numérico siempre. "20 barras", "20 lucas", "20 mil", "20k" = 20000.
-- Para ventas con cantidad y precio unitario (ej: "vendí 200 panelas a 500", "3 almuerzos a 15 mil"):
-  * "concept" debe ser SOLO el nombre del producto, SIN la cantidad. Ej: "panelas", "almuerzos".
-  * "quantity" = la cantidad de unidades vendidas.
-  * "unitPrice" = el precio por unidad (en pesos).
-  * "amount" = quantity × unitPrice (el total de la venta).
-- Si solo se menciona un total sin desglose (ej: "vendí 50 mil"), pon quantity=1, unitPrice=amount.
-- Para deudas, extrae el nombre de la persona/entidad en "debtorName" si se menciona.
-- Si no hay datos financieros que registrar, omite el campo "data".
-- Si el usuario solo saluda o pregunta algo general, responde normalmente sin "data".
+• Usuario usa jerga costeña/colombiana → TÚ la usas igual:
+  - "compa vendí 5 jugos" → "¡Listo compa! 5 jugos registrados."
+  - "epa llave vendí 5 jugos" → "¡Epa llave! Anotao, 5 jugos al libro."
+  - "parce le debo 50k al man del arroz" → "Dale parce, deuda de $50.000 con el man del arroz — guardada."
+  - "bacano cuadro, vendí 20 papas" → "¡Bacano cuadro! 20 papas registradas."
+  - "ome vendí 3 tintos" → "¡Ome! 3 tintos anotaos."
+
+• Usuario escribe neutro/sin jerga → TÚ respondes neutro, sin jerga, sin emojis:
+  - "vendí 5 jugos" → "Listo, 5 jugos registrados."
+  - "vendí 3 almuerzos" → "3 almuerzos registrados."
+
+• Usuario escribe formal → TÚ respondes formal:
+  - "Buenos días, vendí 5 jugos" → "Buenos días, registré la venta de 5 jugos."
+
+• Usuario escribe con errores → NO corrijas, responde natural igual.
+• Usuario escribe abreviado o mezclado → tú también.
+• NUNCA seas más formal que el usuario.
+• NUNCA uses exclamaciones, emojis ni entusiasmo si el usuario no los usa.
+
+PALABRAS DE ESPEJO — si el usuario las dice, tú las repites:
+"cuadro", "llave", "parce", "parcero", "compa", "ome", "epa", "no joda", "bacano",
+"chévere", "mano", "barras", "lucas", "pesos", "plata", "billete", "mija", "mijo"
+
+════════════════════════════════════════
+REGLA #2 — INVENTARIO: NUNCA PIDAS PRECIOS
+════════════════════════════════════════
+La app tiene acceso al inventario del usuario y maneja automáticamente los precios y el stock.
+TU ÚNICO TRABAJO es extraer: tipo de movimiento, nombre del producto, cantidad y precio (si el usuario lo menciona).
+
+CUANDO EL USUARIO DICE QUE VENDIÓ ALGO:
+→ Extrae type="venta", concept, quantity, y amount/unitPrice SI los menciona.
+→ En tu "message" confirma brevemente la venta. NO pidas precio, NO pidas stock.
+→ Si el producto está en inventario (la app lo sabe), se usa el precio guardado automáticamente.
+→ Si no está en inventario, la app preguntará los precios — TÚ no lo hagas.
+EJEMPLO CORRECTO: usuario dice "vendí 5 jugos" → message: "Listo, 5 jugos registrados." + data venta.
+EJEMPLO INCORRECTO: "¿A qué precio los vendiste?" ← NUNCA hagas esto.
+
+CUANDO EL USUARIO DICE QUE COMPRÓ ALGO PARA VENDER:
+→ Extrae type="compra", concept, quantity, y unitPrice/amount SI los menciona.
+→ En tu "message" confirma brevemente. NO pidas precio si no lo mencionó.
+→ Si el producto está en inventario, la app sumará el stock y preguntará el precio si falta.
+→ Si no está, la app pedirá precio de compra y venta — TÚ no lo hagas.
+EJEMPLO CORRECTO: usuario dice "compré 50 gaseosas" → message: "Listo, 50 gaseosas de compra anotadas." + data compra.
+
+════════════════════════════════════════
+TIPOS DE MOVIMIENTO
+════════════════════════════════════════
+- "venta": el usuario vendió algo. Ej: "vendí 3 almuerzos", "saqué 80 lucas de jugos".
+- "gasto": pagó algo que NO es mercancía para revender. Ej: "gasté 15 mil en gasolina", "pagué el arriendo", "compré una escoba".
+- "compra": compró mercancía o productos para VENDER o reponer inventario. REGLA CLAVE: "compré" + producto de venta → SIEMPRE "compra", NUNCA "gasto". Ej: "compré 50 tintos", "traje 20 gaseosas", "repuse empanadas".
+- "deuda-me-deben": alguien le debe al usuario. Ej: "Pedro me debe 20 mil".
+- "deuda-debo": el usuario le debe a alguien. Ej: "le debo 80 mil al proveedor".
+- "pago-deuda-debo": el usuario pagó una deuda que él debía. Ej: "ya le pagué a Laura".
+- "cobro-deuda-me-deben": alguien pagó una deuda al usuario. Ej: "Pedro ya me pagó".
+
+REGLAS PARA PAGOS DE DEUDAS:
+- "isPartial": true si fue abono parcial ("le abonê", "le di algo"), false si fue pago total ("cancelé", "ya quedamos a paz").
+- Si no se menciona monto en pago total, pon amount=0.
+- "debtorName": nombre de la persona o entidad.
+- PAGOS MÚLTIPLES: usa el campo "payments" (array). Ej: "le pagué 30k a Laura y 50k al proveedor" → payments=[{debtorName:"Laura", amount:30000, isPartial:false}, {debtorName:"proveedor", amount:50000, isPartial:false}].
+
+════════════════════════════════════════
+REGLAS DE EXTRACCIÓN
+════════════════════════════════════════
+- Montos: "20 barras"="20 lucas"="20 mil"="20k" = 20000.
+- Para ventas con cantidad y precio: "concept" = SOLO nombre del producto SIN cantidad. "quantity"=unidades. "unitPrice"=precio por unidad. "amount"=quantity×unitPrice.
+- Si solo hay total sin desglose: quantity=1, unitPrice=amount.
+- Para deudas: extrae "debtorName" si se menciona.
+- Sin datos financieros: omite el campo "data".
+- Saludo o pregunta general: responde normalmente sin "data".
+
+════════════════════════════════════════
+ARTEFACTOS DE VOZ (español colombiano)
+════════════════════════════════════════
+1. FUSIÓN "vendí" + número: el STT escribe el número fusionado con "veinti":
+   - "vendí dos" → llega como "22" → interpreta como cantidad 2
+   - "vendí tres" → llega como "23" → cantidad 3
+   REGLA: Si ves cantidad entre 21-29 y el total (nro×precio) es irrazonable para ese producto, usa solo el dígito de unidades.
+
+2. NÚMEROS EN PALABRAS: "do"="dos"=2, "tre"="tres"=3 (costeño no pronuncia la "s").
+
+3. JERGA DE PRECIOS: "a 10k"="10.000". "pa"/"pa'"="para" (precio unitario). "cada uno"/"la unidad"/"el palo"=precio unitario.
+
+4. VALIDACIÓN: quantity×unitPrice debe tener sentido para un vendedor informal (entre 500 y 5.000.000 pesos).
 
 ARTEFACTOS DE VOZ — MUY IMPORTANTE:
 El usuario puede dictar por micrófono. El reconocimiento de voz comete errores específicos con el español colombiano que DEBES corregir antes de extraer datos:
@@ -89,13 +152,28 @@ FORMATO DE RESPUESTA (JSON estricto):
   }
 }`;
 
-// Models in priority order — falls back if one is unavailable
-const MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
+// Modelos en orden de prioridad — el primero falla → prueba el siguiente
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
 
-function getClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY no está configurada');
-  return new GoogleGenAI({ apiKey });
+function getClient(): GoogleGenAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('No hay GEMINI_API_KEY configurada');
+  return new GoogleGenAI({ apiKey: key });
+}
+
+async function generateWithFallback(
+  fn: (model: string) => Promise<any>
+): Promise<any> {
+  let lastError: any;
+  for (const model of MODELS) {
+    try {
+      return await fn(model);
+    } catch (err: any) {
+      console.warn(`[Gemini] ${model} falló:`, err?.message ?? err);
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 const SCHEMA_CONFIG = {
@@ -108,7 +186,7 @@ const SCHEMA_CONFIG = {
       data: {
         type: Type.OBJECT,
         properties: {
-          type: { type: Type.STRING, enum: ['venta', 'gasto', 'deuda-me-deben', 'deuda-debo', 'pago-deuda-debo', 'cobro-deuda-me-deben'] },
+          type: { type: Type.STRING, enum: ['venta', 'gasto', 'compra', 'deuda-me-deben', 'deuda-debo', 'pago-deuda-debo', 'cobro-deuda-me-deben'] },
           amount: { type: Type.NUMBER },
           concept: { type: Type.STRING },
           quantity: { type: Type.NUMBER },
@@ -135,30 +213,199 @@ const SCHEMA_CONFIG = {
   },
 };
 
-export const sendMessageToGemini = async (message: string, history: any[] = []): Promise<ChatResponse> => {
-  const ai = getClient();
-  const contents = [...history, { role: 'user', parts: [{ text: message }] }];
+// ─── OCR Vision types ──────────────────────────────────────────────────────
 
-  for (const model of MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config: SCHEMA_CONFIG,
-      });
-      return JSON.parse(response.text || '{}') as ChatResponse;
-    } catch (error: any) {
-      const status = error?.status ?? error?.message ?? '';
-      const isRetryable = String(status).includes('503') || String(status).includes('UNAVAILABLE') || String(status).includes('429');
-      if (isRetryable) {
-        console.warn(`Model ${model} unavailable, trying next...`);
-        continue;
-      }
-      // Non-retryable error — bail immediately
-      console.error('Gemini error:', error);
-      break;
-    }
+export type OCRMode = 'ventas-dia' | 'nuevo-stock' | 'fiados-me-deben' | 'fiados-debo';
+
+/** Fila de ventas del día: lo que se vendió */
+export interface OCRVentasRow {
+  nombre: string;
+  unidadesVendidas: number;
+  precioVenta: number;
+  total: number;
+}
+
+/** Fila de nuevo stock: mercancía comprada */
+export interface OCRStockRow {
+  nombre: string;
+  cantidadComprada: number;
+  precioCompra: number;
+  total: number;
+}
+
+export interface OCRFiadoRow {
+  nombre: string;
+  loDebe: number;
+  fecha: string;
+  estado: 'pagado' | 'pendiente';
+}
+
+// ─── OCR Prompts ────────────────────────────────────────────────────────────
+
+const OCR_VENTAS_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un registro de VENTAS DEL DÍA. Extrae TODOS los productos vendidos con las unidades vendidas y su precio unitario. Devuelve ÚNICAMENTE este JSON sin texto adicional:
+{"rows": [{"nombre": "Tintos", "unidadesVendidas": 20, "precioVenta": 800, "total": 16000}]}
+REGLAS:
+- total = unidadesVendidas × precioVenta, calcúlalo tú
+- Montos en pesos colombianos como número puro sin puntos ni comas ni $
+- k o K = miles: 20k = 20000
+- Si no aparece precio, ponlo en 0
+- Si no encuentras datos devuelve {"rows": []}`;
+
+const OCR_STOCK_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un registro de COMPRA DE MERCANCÍA o factura de proveedor. Extrae TODOS los productos con la cantidad comprada y su precio de compra por unidad. Devuelve ÚNICAMENTE este JSON sin texto adicional:
+{"rows": [{"nombre": "Tintos", "cantidadComprada": 100, "precioCompra": 500, "total": 50000}]}
+REGLAS:
+- total = cantidadComprada × precioCompra, calcúlalo tú
+- Montos en pesos colombianos como número puro sin puntos ni comas ni $
+- k o K = miles: 20k = 20000
+- Si no aparece precio, ponlo en 0
+- Si no encuentras datos devuelve {"rows": []}`;
+
+const OCR_FIADOS_ME_DEBEN_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un cuaderno de FIADOS — clientes que le deben al vendedor. Extrae TODOS los nombres y cantidades que deben, aunque la letra sea manuscrita o informal. Devuelve ÚNICAMENTE este JSON sin texto adicional:
+{"rows": [{"nombre": "Pedro Gómez", "loDebe": 25000, "fecha": "10/04/2025", "estado": "pendiente"}]}
+REGLAS:
+- Extrae TODOS los fiados visibles sin omitir ninguno
+- k o K = miles: 20k = 20000. "lucas", "luca", "mil" → número puro en pesos colombianos
+- Estado: nombre/monto tachado, X, "pagó", "canceló", "listo" → "pagado". Si no → "pendiente"
+- Fecha en formato DD/MM/YYYY. Si no aparece usa ""
+- Montos como número puro sin puntos ni comas ni $
+- Si no encuentras datos devuelve {"rows": []}. Nunca inventes datos.`;
+
+const OCR_FIADOS_DEBO_PROMPT = `Eres un experto en OCR para vendedores informales colombianos. Analiza esta imagen de un cuaderno de DEUDAS — personas o proveedores a quienes el vendedor les debe dinero. Extrae TODOS los nombres y cantidades que debe, aunque la letra sea manuscrita o informal. Devuelve ÚNICAMENTE este JSON sin texto adicional:
+{"rows": [{"nombre": "Don Carlos", "loDebe": 50000, "fecha": "10/04/2025", "estado": "pendiente"}]}
+REGLAS:
+- Extrae TODOS los registros visibles sin omitir ninguno
+- k o K = miles: 20k = 20000. "lucas", "luca", "mil" → número puro en pesos colombianos
+- Estado: nombre/monto tachado, X, "pagué", "cancelé", "listo" → "pagado". Si no → "pendiente"
+- Fecha en formato DD/MM/YYYY. Si no aparece usa ""
+- Montos como número puro sin puntos ni comas ni $
+- Si no encuentras datos devuelve {"rows": []}. Nunca inventes datos.`;
+
+// ─── OCR Schemas ─────────────────────────────────────────────────────────────
+
+const VENTAS_OCR_SCHEMA = {
+  responseMimeType: 'application/json' as const,
+  responseSchema: {
+    type: Type.OBJECT,
+    properties: {
+      rows: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            nombre: { type: Type.STRING },
+            unidadesVendidas: { type: Type.NUMBER },
+            precioVenta: { type: Type.NUMBER },
+            total: { type: Type.NUMBER },
+          },
+          required: ['nombre', 'unidadesVendidas', 'precioVenta', 'total'],
+        },
+      },
+    },
+    required: ['rows'],
+  },
+};
+
+const STOCK_OCR_SCHEMA = {
+  responseMimeType: 'application/json' as const,
+  responseSchema: {
+    type: Type.OBJECT,
+    properties: {
+      rows: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            nombre: { type: Type.STRING },
+            cantidadComprada: { type: Type.NUMBER },
+            precioCompra: { type: Type.NUMBER },
+            total: { type: Type.NUMBER },
+          },
+          required: ['nombre', 'cantidadComprada', 'precioCompra', 'total'],
+        },
+      },
+    },
+    required: ['rows'],
+  },
+};
+
+const FIADOS_OCR_SCHEMA = {
+  responseMimeType: 'application/json' as const,
+  responseSchema: {
+    type: Type.OBJECT,
+    properties: {
+      rows: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            nombre: { type: Type.STRING },
+            loDebe: { type: Type.NUMBER },
+            fecha: { type: Type.STRING },
+            estado: { type: Type.STRING, enum: ['pagado', 'pendiente'] },
+          },
+          required: ['nombre', 'loDebe', 'fecha', 'estado'],
+        },
+      },
+    },
+    required: ['rows'],
+  },
+};
+
+const OCR_PROMPTS: Record<OCRMode, string> = {
+  'ventas-dia': OCR_VENTAS_PROMPT,
+  'nuevo-stock': OCR_STOCK_PROMPT,
+  'fiados-me-deben': OCR_FIADOS_ME_DEBEN_PROMPT,
+  'fiados-debo': OCR_FIADOS_DEBO_PROMPT,
+};
+
+const OCR_SCHEMAS: Record<OCRMode, any> = {
+  'ventas-dia': VENTAS_OCR_SCHEMA,
+  'nuevo-stock': STOCK_OCR_SCHEMA,
+  'fiados-me-deben': FIADOS_OCR_SCHEMA,
+  'fiados-debo': FIADOS_OCR_SCHEMA,
+};
+
+export async function analyzeImageOCR(
+  base64Image: string,
+  mimeType: string,
+  mode: OCRMode
+): Promise<OCRVentasRow[] | OCRStockRow[] | OCRFiadoRow[]> {
+  const prompt = OCR_PROMPTS[mode];
+  const schema = OCR_SCHEMAS[mode];
+
+  const contents = [{
+    role: 'user',
+    parts: [
+      { inlineData: { mimeType, data: base64Image } },
+      { text: prompt },
+    ],
+  }];
+
+  try {
+    const client = getClient();
+    const response = await generateWithFallback(model =>
+      client.models.generateContent({ model, contents, config: schema })
+    );
+    const parsed = JSON.parse(response.text || '{"rows":[]}');
+    return (parsed.rows ?? []) as OCRVentasRow[] | OCRStockRow[] | OCRFiadoRow[];
+  } catch (error: any) {
+    console.error('Gemini OCR error:', error);
+    return [];
   }
+}
 
-  return { message: "Lo siento, el asistente no está disponible en este momento. Intenta de nuevo en unos segundos." };
+// ─── Chat ───────────────────────────────────────────────────────────────────
+
+export const sendMessageToGemini = async (message: string, history: any[] = []): Promise<ChatResponse> => {
+  const contents = [...history, { role: 'user', parts: [{ text: message }] }];
+  try {
+    const client = getClient();
+    const response = await generateWithFallback(model =>
+      client.models.generateContent({ model, contents, config: SCHEMA_CONFIG })
+    );
+    return JSON.parse(response.text || '{}') as ChatResponse;
+  } catch (error: any) {
+    console.error('Gemini error:', error);
+    return { message: "Lo siento, el asistente no está disponible en este momento. Intenta de nuevo en unos segundos." };
+  }
 };

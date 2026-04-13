@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square, AlertCircle, CreditCard } from 'lucide-react';
+import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square, AlertCircle, CreditCard, Package, ArrowDownToLine } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, capitalizar } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
-import { Debt } from '../types';
+import { Debt, InventoryProduct, getPrecioVenta } from '../types';
 
 // Web Speech API — not in standard TS lib; declare minimal types
 interface SpeechRecognitionEvent extends Event {
@@ -49,6 +49,20 @@ interface DebtPaymentResult {
   paymentType?: 'pago-deuda-debo' | 'cobro-deuda-me-deben';
 }
 
+// State for multi-turn new-product flow
+type PendingProductStep = 'asking-precio-compra' | 'asking-precio-venta' | 'asking-stock';
+interface PendingProduct {
+  concept: string;
+  quantity: number;
+  isCompra: boolean;   // true if triggered by 'compra' type
+  step: PendingProductStep;
+  precioCompra?: number;
+  precioVenta?: number;
+  /** Set when buying existing inventory product but price was not mentioned */
+  productId?: string;
+  productCurrentStock?: number;
+}
+
 interface Message {
   role: 'user' | 'model';
   text: string;
@@ -56,23 +70,25 @@ interface Message {
   timestamp: Date;
   saved?: boolean;
   debtResults?: DebtPaymentResult[];
+  stockUpdate?: { nombre: string; newStock: number };
 }
 
 const TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  'venta':                 { label: 'Venta registrada',    icon: <ShoppingBag className="w-4 h-4" />,  color: 'text-[#B8860B]' },
-  'gasto':                 { label: 'Gasto registrado',    icon: <TrendingDown className="w-4 h-4" />, color: 'text-red-500' },
-  'deuda-me-deben':        { label: 'Deuda a cobrar',      icon: <UserPlus className="w-4 h-4" />,     color: 'text-[#B8860B]' },
-  'deuda-debo':            { label: 'Deuda registrada',    icon: <UserMinus className="w-4 h-4" />,    color: 'text-orange-500' },
-  'pago-deuda-debo':       { label: 'Pago de deuda',       icon: <CreditCard className="w-4 h-4" />,   color: 'text-green-500' },
-  'cobro-deuda-me-deben':  { label: 'Cobro de deuda',      icon: <CreditCard className="w-4 h-4" />,   color: 'text-[#B8860B]' },
+  'venta':                 { label: 'Venta registrada',    icon: <ShoppingBag className="w-4 h-4" />,       color: 'text-[#B8860B]' },
+  'gasto':                 { label: 'Gasto registrado',    icon: <TrendingDown className="w-4 h-4" />,      color: 'text-red-500' },
+  'compra':                { label: 'Compra registrada',   icon: <ArrowDownToLine className="w-4 h-4" />,   color: 'text-[#B8860B]' },
+  'deuda-me-deben':        { label: 'Deuda a cobrar',      icon: <UserPlus className="w-4 h-4" />,          color: 'text-[#B8860B]' },
+  'deuda-debo':            { label: 'Deuda registrada',    icon: <UserMinus className="w-4 h-4" />,         color: 'text-orange-500' },
+  'pago-deuda-debo':       { label: 'Pago de deuda',       icon: <CreditCard className="w-4 h-4" />,        color: 'text-green-500' },
+  'cobro-deuda-me-deben':  { label: 'Cobro de deuda',      icon: <CreditCard className="w-4 h-4" />,        color: 'text-[#B8860B]' },
 };
 
-// Normaliza texto eliminando tildes y pasando a minúsculas para fuzzy match
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function normalizeStr(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
-// Busca una deuda pendiente/parcial que coincida con el nombre dado
 function findDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): Debt | null {
   const n = normalizeStr(name);
   if (!n) return null;
@@ -83,7 +99,38 @@ function findDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): D
   ) ?? null;
 }
 
-// Aplica un pago (total o abono) a una deuda en Firestore
+/** Fuzzy match product name against inventory (3 levels) */
+function findInventoryProduct(inventory: InventoryProduct[], name: string): InventoryProduct | null {
+  const n = normalizeStr(name);
+  if (!n) return null;
+  // 1. Exact match
+  const exact = inventory.find(p => normalizeStr(p.nombre) === n);
+  if (exact) return exact;
+  // 2. Contains match (either direction) — handles "agua" vs "agua botella"
+  const contains = inventory.find(p => {
+    const pn = normalizeStr(p.nombre);
+    return pn.includes(n) || n.includes(pn);
+  });
+  if (contains) return contains;
+  // 3. Word-level: any significant word (>2 chars) in common
+  // handles "aguas" matching "agua botella", "gaseosa personal" matching "gaseosas"
+  const nWords = n.split(/\s+/).filter(w => w.length > 2);
+  return inventory.find(p => {
+    const pWords = normalizeStr(p.nombre).split(/\s+/);
+    return nWords.some(nw => pWords.some(pw => pw.includes(nw) || nw.includes(pw)));
+  }) ?? null;
+}
+
+/** Parse a number from user's natural-language response (e.g. "5 mil", "5000", "5k") */
+function parseUserNumber(text: string): number | null {
+  const s = text.toLowerCase().replace(/\./g, '').replace(',', '.');
+  const milMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:mil|k)/);
+  if (milMatch) return Math.round(parseFloat(milMatch[1]) * 1000);
+  const numMatch = s.match(/(\d+(?:\.\d+)?)/);
+  if (numMatch) return Math.round(parseFloat(numMatch[1]));
+  return null;
+}
+
 async function applyDebtPayment(
   userId: string,
   debt: Debt,
@@ -91,29 +138,33 @@ async function applyDebtPayment(
   isPartial: boolean,
 ): Promise<{ status: 'pagada' | 'parcial'; remaining: number; effectivePayment: number }> {
   const alreadyPaid = debt.amountPaid ?? 0;
-  // Si amount=0 significa pago total del saldo restante
   const effectivePayment = paymentAmount > 0 ? paymentAmount : debt.amount - alreadyPaid;
   const totalPaid = alreadyPaid + effectivePayment;
   const remaining = Math.max(0, debt.amount - totalPaid);
   const newStatus: 'pagada' | 'parcial' = (remaining <= 0 || !isPartial) ? 'pagada' : 'parcial';
-
   await updateDoc(doc(db, 'users', userId, 'debts', debt.id), {
     status: newStatus,
     amountPaid: totalPaid,
     ...(newStatus === 'pagada' ? { paidAt: serverTimestamp() } : {}),
   });
-
   return { status: newStatus, remaining, effectivePayment };
 }
 
-async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['data']>): Promise<void> {
-  const base = { concept: data.concept, amount: data.amount, createdAt: serverTimestamp() };
+const esMontoValido = (v: unknown): v is number =>
+  typeof v === 'number' && !isNaN(v) && isFinite(v) && v >= 0;
 
+async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['data']>): Promise<void> {
+  if (!esMontoValido(data.amount)) {
+    console.warn('[Chat] Monto inválido, no se guarda en Firebase:', data);
+    return;
+  }
+  const concept = capitalizar(data.concept);
+  const base = { concept, amount: data.amount, createdAt: serverTimestamp() };
   if (data.type === 'venta') {
     const qty = data.quantity ?? 1;
-    const unitPrice = data.unitPrice ?? data.amount;
+    const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
     await addDoc(collection(db, 'users', userId, 'sales'), {
-      items: [{ product: data.concept, quantity: qty, unitPrice, subtotal: data.amount }],
+      items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
       total: data.amount,
       createdAt: serverTimestamp(),
     });
@@ -122,25 +173,28 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
   } else if (data.type === 'deuda-me-deben') {
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: data.debtorName || data.concept,
+      name: capitalizar(data.debtorName || data.concept),
       type: 'me-deben',
     });
   } else if (data.type === 'deuda-debo') {
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: data.debtorName || data.concept,
+      name: capitalizar(data.debtorName || data.concept),
       type: 'debo',
     });
   }
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 interface Props {
   isDarkMode: boolean;
   userId: string;
   debts: Debt[];
+  inventory: InventoryProduct[];
 }
 
-export const Chat = ({ isDarkMode, userId, debts }: Props) => {
+export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
@@ -150,6 +204,7 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<PendingProduct | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Voice input state ──────────────────────────────────────────────
@@ -167,21 +222,17 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
   const startListening = useCallback(() => {
     if (!SpeechRecognitionAPI) return;
     setMicError('');
-    setInput(''); // clear input before recording so transcript is clean
+    setInput('');
 
     const recognition = new SpeechRecognitionAPI();
-    // es-CO = Colombian Spanish — best available for costeño/barranquillero dialect
     recognition.lang = 'es-CO';
-    recognition.continuous = false;    // stops naturally after a pause
-    recognition.interimResults = true; // show text in real-time while speaking
+    recognition.continuous = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => setIsListening(true);
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      // Always rebuild the full transcript from ALL results (0..length).
-      // This avoids the duplication bug that comes from iterating only
-      // from event.resultIndex and trying to do string-slice surgery on prev state.
       let transcript = '';
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
@@ -208,11 +259,9 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
     recognition.start();
   }, []);
 
-  // Clean up recognition on unmount
   useEffect(() => {
     return () => { recognitionRef.current?.abort(); };
   }, []);
-  // ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -220,55 +269,187 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
     }
   }, [messages]);
 
+  // ── Helpers for adding bot messages ───────────────────────────────────────
+
+  const addBotMsg = (text: string, extra?: Partial<Message>) => {
+    setMessages(prev => [...prev, { role: 'model', text, timestamp: new Date(), ...extra }]);
+  };
+
+  // ── handleSend ───────────────────────────────────────────────────────────
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = { role: 'user', text: input, timestamp: new Date() };
-    setMessages((prev) => [...prev, userMessage]);
+    const userInput = input.trim();
+    setMessages(prev => [...prev, { role: 'user', text: userInput, timestamp: new Date() }]);
     setInput('');
-    setIsLoading(true);
 
-    const history = messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
+    // ── Pending new-product flow (multi-turn, no Gemini needed) ────────────
+    if (pendingProduct) {
+      // Step: asking for precioCompra
+      if (pendingProduct.step === 'asking-precio-compra') {
+        const price = parseUserNumber(userInput);
+        if (!price || price <= 0) {
+          addBotMsg('No entendí el precio. Dímelo en pesos, ej: 1500 o 5 mil.');
+          return;
+        }
+        if (pendingProduct.isCompra && pendingProduct.productId) {
+          // compra de producto EXISTENTE — ya tenemos todo, guardar directamente
+          const { concept, quantity, productId, productCurrentStock = 0 } = pendingProduct;
+          const total = quantity * price;
+          const newStock = productCurrentStock + quantity;
+          setIsLoading(true);
+          try {
+            await updateDoc(doc(db, 'users', userId, 'inventario', productId), {
+              cantidad: newStock,
+              precioCompra: price,
+              updatedAt: serverTimestamp(),
+            });
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${concept}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+            });
+            addBotMsg(
+              `¡Listo! Compraste ${quantity} ${concept} a $${price.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
+              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: price }, stockUpdate: { nombre: concept, newStock } }
+            );
+          } catch (e) {
+            console.error('[Chat] Error al guardar compra:', e);
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+            setPendingProduct(null);
+          }
+        } else if (pendingProduct.isCompra) {
+          // compra de producto NUEVO — pedir precioVenta después
+          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-precio-venta' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Y a qué precio lo vendes tú?`);
+        } else {
+          // venta de producto nuevo — ya tenemos precioVenta, ahora ir a stock
+          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-stock' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Cuántas unidades tienes en total ahora?`);
+        }
+        return;
+      }
+
+      // Step: asking for precioVenta
+      if (pendingProduct.step === 'asking-precio-venta') {
+        const price = parseUserNumber(userInput);
+        if (!price || price <= 0) {
+          addBotMsg('No entendí el precio de venta. Ej: 2000 o 8 mil.');
+          return;
+        }
+        if (pendingProduct.isCompra) {
+          // compra: tenemos todo — guardar inventario + gasto
+          const { concept, quantity, precioCompra = 0 } = pendingProduct;
+          const total = quantity * precioCompra;
+          setIsLoading(true);
+          try {
+            await addDoc(collection(db, 'users', userId, 'inventario'), {
+              nombre: concept,
+              cantidad: quantity,
+              precioCompra,
+              precioVenta: price,
+              createdAt: serverTimestamp(),
+            });
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${concept}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+            });
+            addBotMsg(
+              `¡Listo! ${quantity} ${concept} guardados — compra a $${precioCompra.toLocaleString('es-CO')}, venta a $${price.toLocaleString('es-CO')}. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
+              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra } }
+            );
+          } catch (e) {
+            console.error('[Chat] Error al guardar compra nueva:', e);
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+            setPendingProduct(null);
+          }
+        } else {
+          // venta de producto nuevo — pedir precio de compra (costo) antes del stock
+          setPendingProduct({ ...pendingProduct, precioVenta: price, step: 'asking-precio-compra' });
+          addBotMsg(`$${price.toLocaleString('es-CO')} de precio de venta. ¿Y a qué precio lo compraste tú (costo)?`);
+        }
+        return;
+      }
+
+      // Step: asking for total stock (only for venta path)
+      if (pendingProduct.step === 'asking-stock') {
+        const stockTotal = parseUserNumber(userInput);
+        if (stockTotal == null || stockTotal < 0) {
+          addBotMsg('Dime cuántas tienes en total, ej: 50.');
+          return;
+        }
+
+        const { concept, quantity, precioCompra = 0, precioVenta = 0 } = pendingProduct;
+        const total = quantity * precioVenta;
+        const stockRestante = Math.max(0, stockTotal - quantity);
+
+        setIsLoading(true);
+        try {
+          await addDoc(collection(db, 'users', userId, 'sales'), {
+            items: [{ product: concept, quantity, unitPrice: precioVenta, subtotal: total }],
+            total,
+            createdAt: serverTimestamp(),
+          });
+          await addDoc(collection(db, 'users', userId, 'inventario'), {
+            nombre: concept,
+            cantidad: stockRestante,
+            precioCompra,
+            precioVenta,
+            createdAt: serverTimestamp(),
+          });
+          addBotMsg(
+            `¡Listo! ${quantity} ${concept} a $${precioVenta.toLocaleString('es-CO')} — Total: $${total.toLocaleString('es-CO')} registrado. Guardé "${concept}" en inventario con ${stockRestante} unidades disponibles.`,
+            { saved: true, data: { type: 'venta', amount: total, concept, quantity, unitPrice: precioVenta } }
+          );
+        } catch (e) {
+          console.error('[Chat] Error al guardar producto nuevo:', e);
+          addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+        } finally {
+          setIsLoading(false);
+          setPendingProduct(null);
+        }
+        return;
+      }
+    }
+
+    // ── Normal Gemini flow ───────────────────────────────────────────────────
+    setIsLoading(true);
+    const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
 
     try {
-      const response = await sendMessageToGemini(input, history);
+      const response = await sendMessageToGemini(userInput, history);
       const dataType = response.data?.type;
       const isDebtPayment = dataType === 'pago-deuda-debo' || dataType === 'cobro-deuda-me-deben';
 
+      // ── Debt payment / collection flow ─────────────────────────────────────
       if (isDebtPayment && response.data) {
-        // ── Flujo de pago / cobro de deuda ──────────────────────────────
         const debtType = dataType === 'pago-deuda-debo' ? 'debo' : 'me-deben';
-
-        // Construye la lista de pagos (uno o varios)
         const rawPayments = response.data.payments?.length
           ? response.data.payments
           : [{ debtorName: response.data.debtorName ?? response.data.concept ?? '', amount: response.data.amount, isPartial: response.data.isPartial ?? false }];
 
         const debtResults: DebtPaymentResult[] = [];
-
         for (const p of rawPayments) {
           const matched = findDebt(debts, p.debtorName, debtType);
           if (matched) {
             try {
               const result = await applyDebtPayment(userId, matched, p.amount, p.isPartial);
-              debtResults.push({
-                found: true,
-                debtorName: p.debtorName,
-                amount: result.effectivePayment,
-                isPartial: p.isPartial,
-                paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben',
-                ...result,
-              });
-              // Create a financial movement so it appears in Dashboard and FinanceView
+              debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
               if (dataType === 'pago-deuda-debo') {
                 await addDoc(collection(db, 'users', userId, 'expenses'), {
-                  concept: `Pago deuda: ${matched.name}`,
+                  concept: `Pago deuda: ${capitalizar(matched.name)}`,
                   amount: result.effectivePayment,
                   createdAt: serverTimestamp(),
                 });
               } else {
                 await addDoc(collection(db, 'users', userId, 'sales'), {
-                  items: [{ product: `Cobro: ${matched.name}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
+                  items: [{ product: `Cobro: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
                   total: result.effectivePayment,
                   createdAt: serverTimestamp(),
                 });
@@ -282,46 +463,200 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
           }
         }
 
-        const allFound = debtResults.every(r => r.found);
-        setMessages((prev) => [...prev, {
+        setMessages(prev => [...prev, {
           role: 'model',
           text: response.message,
           data: response.data,
           timestamp: new Date(),
-          saved: allFound,
+          saved: debtResults.every(r => r.found),
           debtResults,
         }]);
+        return;
+      }
 
-      } else {
-        // ── Flujo normal: venta / gasto / registro de deuda nueva ────────
-        let saved = false;
-        if (response.data && userId) {
+      // ── Inventory-aware sale handling ───────────────────────────────────────
+      if (dataType === 'venta' && response.data) {
+        const { concept: rawConcept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const concept = capitalizar(rawConcept);
+        const foundProduct = findInventoryProduct(inventory, concept);
+
+        if (foundProduct) {
+          // CASO 1 — Producto en inventario.
+          // Si el usuario mencionó un precio explícito (geminiUnitPrice > 0), se usa ese
+          // como "precio especial" solo para esta venta. Si no, se usa precioVenta guardado.
+          const storedPrice = getPrecioVenta(foundProduct);
+          const unitPrice = (geminiUnitPrice && geminiUnitPrice > 0) ? geminiUnitPrice : storedPrice;
+          const isPrecioEspecial = geminiUnitPrice && geminiUnitPrice > 0 && geminiUnitPrice !== storedPrice;
+          const total = quantity * unitPrice;
+          const newStock = Math.max(0, (foundProduct.cantidad ?? 0) - quantity);
+          try {
+            await addDoc(collection(db, 'users', userId, 'sales'), {
+              items: [{ product: foundProduct.nombre, quantity, unitPrice, subtotal: total }],
+              total,
+              createdAt: serverTimestamp(),
+            });
+            await updateDoc(doc(db, 'users', userId, 'inventario', foundProduct.id), {
+              cantidad: newStock,
+              updatedAt: serverTimestamp(),
+              // precioVenta NO se actualiza — el precio especial es solo para esta venta
+            });
+            const precioLabel = isPrecioEspecial
+              ? `$${unitPrice.toLocaleString('es-CO')} (precio especial)`
+              : `$${unitPrice.toLocaleString('es-CO')} c/u`;
+            setMessages(prev => [...prev, {
+              role: 'model',
+              text: `¡Listo! ${quantity} ${foundProduct.nombre} a ${precioLabel} — Total: $${total.toLocaleString('es-CO')} registrado. Stock actualizado: ${newStock} unidades.`,
+              timestamp: new Date(),
+              saved: true,
+              data: { type: 'venta', amount: total, concept: foundProduct.nombre, quantity, unitPrice },
+              stockUpdate: { nombre: foundProduct.nombre, newStock },
+            }]);
+          } catch (e) {
+            console.error('[Chat] Error al guardar venta con inventario:', e);
+            setMessages(prev => [...prev, {
+              role: 'model',
+              text: response.message,
+              data: response.data,
+              timestamp: new Date(),
+              saved: false,
+            }]);
+          }
+          return;
+        }
+
+        if (amount > 0) {
+          // CASO 2 — No está en inventario pero el usuario mencionó el precio: guardar normal
           try {
             await saveToFirestore(userId, response.data);
-            saved = true;
+            setMessages(prev => [...prev, {
+              role: 'model',
+              text: response.message,
+              data: response.data,
+              timestamp: new Date(),
+              saved: true,
+            }]);
           } catch (e) {
-            console.error('Error saving from chat:', e);
+            console.error('[Chat] Error al guardar venta:', e);
+            setMessages(prev => [...prev, {
+              role: 'model',
+              text: response.message,
+              data: response.data,
+              timestamp: new Date(),
+              saved: false,
+            }]);
           }
+          return;
         }
-        setMessages((prev) => [...prev, {
-          role: 'model',
-          text: response.message,
-          data: response.data,
-          timestamp: new Date(),
-          saved,
-        }]);
+
+        // CASO 3 — No está en inventario y no se mencionó precio: preguntar precio de venta primero
+        setPendingProduct({ concept: concept || 'producto', quantity, isCompra: false, step: 'asking-precio-venta' });
+        addBotMsg(`No tengo "${concept || 'ese producto'}" en el inventario. ¿A qué precio lo vendes?`);
+        return;
       }
+
+      // ── Compra: suma al stock + registra gasto ─────────────────────────────
+      if (dataType === 'compra' && response.data) {
+        const { concept: rawConcept = '', quantity = 1, amount, unitPrice: geminiUnitPrice } = response.data;
+        const concept = capitalizar(rawConcept);
+        const precioCompra = geminiUnitPrice ?? (quantity > 1 ? Math.round(amount / quantity) : amount);
+        const total = quantity * precioCompra;
+        const foundProduct = findInventoryProduct(inventory, concept);
+
+        if (foundProduct && precioCompra <= 0) {
+          // Producto existente pero sin precio mencionado — preguntar precio
+          setPendingProduct({
+            concept: foundProduct.nombre,
+            quantity,
+            isCompra: true,
+            step: 'asking-precio-compra',
+            productId: foundProduct.id,
+            productCurrentStock: foundProduct.cantidad ?? 0,
+          });
+          addBotMsg(`¿A qué precio compraste ${foundProduct.nombre}?`);
+          setIsLoading(false);
+          return;
+        }
+
+        if (!foundProduct && precioCompra <= 0) {
+          // Nuevo producto sin precio — preguntar precio compra y venta
+          setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, step: 'asking-precio-compra' });
+          addBotMsg(`¿A qué precio compraste ${concept}?`);
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          if (foundProduct) {
+            await updateDoc(doc(db, 'users', userId, 'inventario', foundProduct.id), {
+              cantidad: (foundProduct.cantidad ?? 0) + quantity,
+              precioCompra,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            // Nuevo producto con precio — también necesitamos precioVenta, lo pedimos después
+            setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-precio-venta' });
+            addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} anotada. ¿A qué precio los vendes?`);
+            setIsLoading(false);
+            return;
+          }
+          await addDoc(collection(db, 'users', userId, 'expenses'), {
+            concept: `Compra: ${concept}`,
+            amount: total,
+            createdAt: serverTimestamp(),
+          });
+          const newStock = (foundProduct.cantidad ?? 0) + quantity;
+          setMessages(prev => [...prev, {
+            role: 'model',
+            text: `¡Listo! Compraste ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
+            timestamp: new Date(),
+            saved: true,
+            data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra },
+            stockUpdate: { nombre: concept, newStock },
+          }]);
+        } catch (e) {
+          console.error('[Chat] Error al guardar compra:', e);
+          setMessages(prev => [...prev, {
+            role: 'model',
+            text: response.message,
+            data: response.data,
+            timestamp: new Date(),
+            saved: false,
+          }]);
+        }
+        return;
+      }
+
+      // ── Resto: gasto, deuda nueva, saludo, etc. ─────────────────────────────
+      let saved = false;
+      if (response.data && userId) {
+        try {
+          await saveToFirestore(userId, response.data);
+          saved = true;
+        } catch (e) {
+          console.error('Error saving from chat:', e);
+        }
+      }
+      setMessages(prev => [...prev, {
+        role: 'model',
+        text: response.message,
+        data: response.data,
+        timestamp: new Date(),
+        saved,
+      }]);
+
     } catch (e: any) {
-      const errMsg = e?.message ?? String(e);
       console.error('Chat error:', e);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'model', text: `Error: ${errMsg}`, timestamp: new Date() },
-      ]);
+      setMessages(prev => [...prev, {
+        role: 'model',
+        text: `Error: ${e?.message ?? String(e)}`,
+        timestamp: new Date(),
+      }]);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full">
@@ -364,6 +699,17 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
                     </p>
                     <p className="text-[10px] opacity-40 truncate">{msg.data.concept}</p>
                   </div>
+                  {/* Stock update badge */}
+                  {msg.stockUpdate && (
+                    <div className={cn(
+                      'flex flex-col items-center justify-center px-2 py-1 rounded-lg text-center',
+                      isDarkMode ? 'bg-[#B8860B]/20' : 'bg-[#FFF8DC]'
+                    )}>
+                      <Package className="w-3 h-3 text-[#B8860B] mb-0.5" />
+                      <p className="text-[9px] font-black text-[#B8860B] leading-none">{msg.stockUpdate.newStock}</p>
+                      <p className="text-[8px] opacity-50 leading-none">uds.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -452,8 +798,27 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
           <p className="text-xs font-medium text-red-400 text-center px-2">{micError}</p>
         )}
 
+        {/* Pending product indicator */}
+        {pendingProduct && (
+          <div className={cn(
+            'flex items-center justify-between px-4 py-2 rounded-xl text-xs font-bold',
+            isDarkMode ? 'bg-[#B8860B]/15 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#B8860B]'
+          )}>
+            <span>
+              {pendingProduct.step === 'asking-price'
+                ? `Esperando precio de "${pendingProduct.concept}"`
+                : `Esperando stock de "${pendingProduct.concept}"`}
+            </span>
+            <button
+              onClick={() => { setPendingProduct(null); addBotMsg('Ok, cancelado.'); }}
+              className="opacity-50 hover:opacity-100 transition-opacity ml-2 underline"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
-          {/* Input field */}
           <div className={cn(
             'flex-1 backdrop-blur-xl rounded-2xl h-12 px-4 flex items-center shadow-lg transition-all duration-500',
             isListening
@@ -461,7 +826,6 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
               : isDarkMode ? 'bg-[#1A1A1A]/90' : 'bg-white/90'
           )}>
             {isListening && (
-              /* Pulsing dot while recording */
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2 shrink-0" />
             )}
             <input
@@ -469,7 +833,15 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
                 'bg-transparent border-none focus:ring-0 w-full text-sm font-medium transition-colors',
                 isDarkMode ? 'text-[#FDFBF0] placeholder:text-[#FDFBF0]/30' : 'text-[#2e2f2d] placeholder:text-[#5b5c5a]/50'
               )}
-              placeholder={isListening ? 'Escuchando...' : 'Ej: vendí 3 almuerzos por 45 mil...'}
+              placeholder={
+                pendingProduct?.step === 'asking-price'
+                  ? 'Escribe el precio, ej: 1500 o 5 mil...'
+                  : pendingProduct?.step === 'asking-stock'
+                  ? 'Escribe el total de unidades disponibles...'
+                  : isListening
+                  ? 'Escuchando...'
+                  : 'Ej: vendí 3 almuerzos por 45 mil...'
+              }
               type="text"
               value={input}
               onChange={(e) => { if (!isListening) setInput(e.target.value); }}
@@ -477,7 +849,6 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
             />
           </div>
 
-          {/* Mic button — only shown when Web Speech API is available */}
           {voiceSupported && (
             <button
               onClick={isListening ? stopListening : startListening}
@@ -498,7 +869,6 @@ export const Chat = ({ isDarkMode, userId, debts }: Props) => {
             </button>
           )}
 
-          {/* Send button */}
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim() || isListening}
