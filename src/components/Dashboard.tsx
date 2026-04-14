@@ -204,10 +204,13 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               ${(weekTotal || 0).toLocaleString('es-CO')}
             </span>
           </div>
-          <div className="w-full" style={{ height: 160 }}>
-            <ResponsiveContainer width="100%" height={160} minWidth={0}>
-              <BarChart data={weeklyData}>
-                <Bar dataKey="value" radius={[10, 10, 0, 0]}>
+          <div
+            className="w-full [&_svg]:outline-none [&_svg]:border-none [&>div]:outline-none [&>div]:border-none"
+            style={{ height: 160, outline: 'none', border: 'none' }}
+          >
+            <ResponsiveContainer width="100%" height={160} minWidth={0} style={{ outline: 'none', border: 'none' }}>
+              <BarChart data={weeklyData} style={{ outline: 'none', border: 'none' }} barCategoryGap="20%">
+                <Bar dataKey="value" radius={[10, 10, 0, 0]} activeBar={false} isAnimationActive={false}>
                   {weeklyData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}

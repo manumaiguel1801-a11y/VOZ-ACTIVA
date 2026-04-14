@@ -345,7 +345,7 @@ const Input = ({
       onChange={(e) => onChange(e.target.value)}
       required={required}
       className={cn(
-        "flex-1 bg-transparent border-none focus:ring-0 px-4 font-medium",
+        "flex-1 bg-transparent border-none outline-none focus:ring-0 px-4 font-medium",
         isDarkMode ? "text-[#FDFBF0] placeholder:text-[#FDFBF0]/30" : "text-[#2e2f2d] placeholder:text-[#5b5c5a]/50"
       )}
     />
