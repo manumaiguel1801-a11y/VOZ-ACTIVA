@@ -1,16 +1,15 @@
 import React from 'react';
 import {
   Home,
-  Camera,
   Wallet,
   User,
   Moon,
   Sun,
   TrendingUp,
   Package,
-  MessageCircle,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  Users,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Tab, Debt, InventoryProduct } from '../types';
@@ -165,11 +164,11 @@ export const Layout = ({
           label="Finanzas" 
           isDarkMode={isDarkMode}
         />
-        <NavButton 
-          active={activeTab === 'camara'} 
-          onClick={() => setActiveTab('camara')} 
-          icon={<Camera />} 
-          label="Cámara" 
+        <NavButton
+          active={activeTab === 'camara'}
+          onClick={() => setActiveTab('camara')}
+          icon={<Users />}
+          label="Deudas"
           isDarkMode={isDarkMode}
         />
         <NavButton 

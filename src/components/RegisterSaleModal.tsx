@@ -84,6 +84,7 @@ export const RegisterSaleModal = ({ userId, isDarkMode, onClose }: Props) => {
         items,
         total,
         createdAt: serverTimestamp(),
+        source: 'manual',
       });
 
       setDone(true);

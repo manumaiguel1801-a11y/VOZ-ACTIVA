@@ -1,11 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight, Send, MessageCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
 import { MovementDetailModal } from './MovementDetailModal';
 
 const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+function SourceBadge({ source }: { source?: string }) {
+  if (!source || source === 'manual') return null;
+  const config = {
+    telegram: { label: 'Telegram', color: '#229ED9', Icon: Send },
+    chat:     { label: 'Chat IA',  color: '#8B5CF6', Icon: MessageCircle },
+    camara:   { label: 'Cámara',   color: '#F59E0B', Icon: null },
+  }[source];
+  if (!config) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wide" style={{ color: config.color }}>
+      {config.Icon && <config.Icon className="w-2.5 h-2.5" />}
+      {config.label}
+    </span>
+  );
+}
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
@@ -165,7 +181,10 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-sm truncate">{getSaleLabel(s)}</p>
-                    <p className="text-[10px] opacity-50">{formatRelativeTime(getSaleDate(s))}{getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</p>
+                    <div className="flex items-center gap-1.5 text-[10px] opacity-50">
+                      <span>{formatRelativeTime(getSaleDate(s))}{getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</span>
+                      <SourceBadge source={s.source} />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -187,7 +206,10 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-sm truncate">{e.concept}</p>
-                    <p className="text-[10px] opacity-50">{formatRelativeTime(getExpenseDate(e))}</p>
+                    <div className="flex items-center gap-1.5 text-[10px] opacity-50">
+                      <span>{formatRelativeTime(getExpenseDate(e))}</span>
+                      <SourceBadge source={e.source} />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">

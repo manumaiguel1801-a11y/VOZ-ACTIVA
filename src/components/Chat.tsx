@@ -159,7 +159,7 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
     return;
   }
   const concept = capitalizar(data.concept);
-  const base = { concept, amount: data.amount, createdAt: serverTimestamp() };
+  const base = { concept, amount: data.amount, createdAt: serverTimestamp(), source: 'chat' };
   if (data.type === 'venta') {
     const qty = data.quantity ?? 1;
     const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
@@ -167,6 +167,7 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
       items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
       total: data.amount,
       createdAt: serverTimestamp(),
+      source: 'chat',
     });
   } else if (data.type === 'gasto') {
     await addDoc(collection(db, 'users', userId, 'expenses'), base);
@@ -309,6 +310,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               concept: `Compra: ${concept}`,
               amount: total,
               createdAt: serverTimestamp(),
+              source: 'chat',
             });
             addBotMsg(
               `¡Listo! Compraste ${quantity} ${concept} a $${price.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
@@ -335,9 +337,47 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
 
       // Step: asking for precioVenta
       if (pendingProduct.step === 'asking-precio-venta') {
+        // Detect "not selling" before trying to parse a price
+        const lowerInput = userInput.toLowerCase();
+        const notSelling =
+          /\bno\b/.test(lowerInput) ||
+          lowerInput.includes('consumo') ||
+          lowerInput.includes('personal') ||
+          lowerInput.includes('para m') ||
+          lowerInput.includes('uso propio') ||
+          lowerInput.includes('no vend') ||
+          lowerInput.includes('mi casa') ||
+          lowerInput.includes('mi familia');
+
+        if (notSelling && pendingProduct.isCompra) {
+          // Register only as gasto, skip inventory
+          const { concept, quantity, precioCompra = 0 } = pendingProduct;
+          const total = quantity * precioCompra;
+          setIsLoading(true);
+          try {
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${concept}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+              source: 'chat',
+            });
+            addBotMsg(
+              `Entendido 👍 Registré $${total.toLocaleString('es-CO')} de gasto por ${quantity} ${concept}. No se tocó el inventario.`,
+              { saved: true, data: { type: 'gasto', amount: total, concept } }
+            );
+          } catch (e) {
+            console.error('[Chat] Error al guardar compra sin inventario:', e);
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+            setPendingProduct(null);
+          }
+          return;
+        }
+
         const price = parseUserNumber(userInput);
         if (!price || price <= 0) {
-          addBotMsg('No entendí el precio de venta. Ej: 2000 o 8 mil.');
+          addBotMsg('No entendí 🤔 Dime el precio de venta (ej: <i>2000</i> o <i>8 mil</i>) o escribe <b>"no lo vendo"</b> si es para uso propio.');
           return;
         }
         if (pendingProduct.isCompra) {
@@ -357,6 +397,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               concept: `Compra: ${concept}`,
               amount: total,
               createdAt: serverTimestamp(),
+              source: 'chat',
             });
             addBotMsg(
               `¡Listo! ${quantity} ${concept} guardados — compra a $${precioCompra.toLocaleString('es-CO')}, venta a $${price.toLocaleString('es-CO')}. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
@@ -395,6 +436,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             items: [{ product: concept, quantity, unitPrice: precioVenta, subtotal: total }],
             total,
             createdAt: serverTimestamp(),
+            source: 'chat',
           });
           await addDoc(collection(db, 'users', userId, 'inventario'), {
             nombre: concept,
@@ -446,12 +488,14 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
                   concept: `Pago deuda: ${capitalizar(matched.name)}`,
                   amount: result.effectivePayment,
                   createdAt: serverTimestamp(),
+                  source: 'chat',
                 });
               } else {
                 await addDoc(collection(db, 'users', userId, 'sales'), {
                   items: [{ product: `Cobro: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
                   total: result.effectivePayment,
                   createdAt: serverTimestamp(),
+                  source: 'chat',
                 });
               }
             } catch (e) {
@@ -494,6 +538,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               items: [{ product: foundProduct.nombre, quantity, unitPrice, subtotal: total }],
               total,
               createdAt: serverTimestamp(),
+              source: 'chat',
             });
             await updateDoc(doc(db, 'users', userId, 'inventario', foundProduct.id), {
               cantidad: newStock,
@@ -603,6 +648,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             concept: `Compra: ${concept}`,
             amount: total,
             createdAt: serverTimestamp(),
+            source: 'chat',
           });
           const newStock = (foundProduct.cantidad ?? 0) + quantity;
           setMessages(prev => [...prev, {
