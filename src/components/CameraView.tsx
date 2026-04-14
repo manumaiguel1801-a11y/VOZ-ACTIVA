@@ -15,8 +15,10 @@ import {
   RotateCcw,
   AlertCircle,
   TrendingDown,
+  X,
+  Check,
 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cn, capitalizar } from '../lib/utils';
 import { Debt, InventoryProduct } from '../types';
@@ -171,6 +173,13 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
+
+  // Formulario manual de deuda
+  const [showDebtForm, setShowDebtForm] = useState(false);
+  const [debtFormNombre, setDebtFormNombre] = useState('');
+  const [debtFormMonto, setDebtFormMonto] = useState('');
+  const [debtFormFecha, setDebtFormFecha] = useState(() => new Date().toISOString().split('T')[0]);
+  const [savingDebt, setSavingDebt] = useState(false);
 
   // ── File handling ──────────────────────────────────────────────────────────
 
@@ -1063,6 +1072,38 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
     </div>
   );
 
+  // ── Registro manual de deuda ──────────────────────────────────────────────
+
+  const handleSaveDebtManual = async () => {
+    const nombre = capitalizar(debtFormNombre.trim());
+    const monto = parseNum(debtFormMonto);
+    if (!nombre || !esMontoValido(monto)) return;
+    setSavingDebt(true);
+    try {
+      const concept = debtType === 'me-deben' ? 'Fiado' : 'Deuda';
+      const fechaDate = debtFormFecha
+        ? new Date(debtFormFecha + 'T12:00:00')
+        : new Date();
+      await addDoc(collection(db, 'users', userId, 'debts'), {
+        name: nombre,
+        concept,
+        amount: monto,
+        type: debtType,
+        status: 'pendiente',
+        createdAt: Timestamp.fromDate(fechaDate),
+      });
+      setDebtFormNombre('');
+      setDebtFormMonto('');
+      setDebtFormFecha(new Date().toISOString().split('T')[0]);
+      setShowDebtForm(false);
+      showToast('¡Listo! Deuda registrada');
+    } catch (e: any) {
+      console.error('[DeudaManual] Error:', e?.code, e?.message, e);
+    } finally {
+      setSavingDebt(false);
+    }
+  };
+
   // ── Debts section (original) ──────────────────────────────────────────────
 
   const renderDeudasSection = () => (
@@ -1072,6 +1113,15 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           <h2 className="text-2xl font-black text-[#B8860B] font-['Plus_Jakarta_Sans']">Deudas y Fiados</h2>
           <p className="text-xs opacity-50 font-bold uppercase tracking-widest">Control de cartera</p>
         </div>
+        <button
+          onClick={() => { setShowDebtForm((v) => !v); setDebtFormNombre(''); setDebtFormMonto(''); setDebtFormFecha(new Date().toISOString().split('T')[0]); }}
+          className={cn(
+            'w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-all active:scale-95',
+            showDebtForm ? 'bg-red-500 text-white' : 'bg-[#B8860B] text-black',
+          )}
+        >
+          {showDebtForm ? <X className="w-5 h-5" /> : <Plus className="w-6 h-6" />}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -1087,7 +1137,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
       <div className={cn('flex p-1 rounded-2xl transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]')}>
         <button
-          onClick={() => setDebtType('me-deben')}
+          onClick={() => { setDebtType('me-deben'); setShowDebtForm(false); }}
           className={cn(
             'flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
             debtType === 'me-deben'
@@ -1099,7 +1149,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           Me deben
         </button>
         <button
-          onClick={() => setDebtType('debo')}
+          onClick={() => { setDebtType('debo'); setShowDebtForm(false); }}
           className={cn(
             'flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
             debtType === 'debo'
@@ -1111,6 +1161,82 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           Debo
         </button>
       </div>
+
+      {/* Formulario manual de deuda */}
+      {showDebtForm && (
+        <div className={cn('p-5 rounded-2xl space-y-4 border', isDarkMode ? 'bg-[#1A1A1A] border-white/8' : 'bg-white shadow-sm border-black/5')}>
+          <p className="font-black text-[#B8860B] text-sm uppercase tracking-widest">
+            {debtType === 'me-deben' ? 'Nueva deuda a cobrar' : 'Nueva deuda a pagar'}
+          </p>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={debtFormNombre}
+              onChange={(e) => setDebtFormNombre(e.target.value)}
+              placeholder={debtType === 'me-deben' ? 'Nombre de la persona' : 'Nombre de la persona o proveedor'}
+              className={cn(
+                'w-full h-11 rounded-xl px-4 text-sm outline-none border',
+                isDarkMode
+                  ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                  : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+              )}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded z-10', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+                  {debtType === 'me-deben' ? 'Monto que me debe' : 'Monto que debo'}
+                </label>
+                <div className="relative">
+                  <span className={cn('absolute left-3 top-1/2 -translate-y-1/2 text-sm select-none', isDarkMode ? 'text-white/30' : 'text-black/30')}>$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={debtFormMonto}
+                    onChange={(e) => setDebtFormMonto(e.target.value)}
+                    placeholder="0"
+                    className={cn(
+                      'w-full h-11 rounded-xl pl-7 pr-2 text-sm outline-none border',
+                      isDarkMode
+                        ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0] placeholder:text-white/30'
+                        : 'bg-[#FDFBF0] border-black/8 placeholder:text-black/30',
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="relative">
+                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded z-10', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+                  Fecha
+                </label>
+                <input
+                  type="date"
+                  value={debtFormFecha}
+                  onChange={(e) => setDebtFormFecha(e.target.value)}
+                  className={cn(
+                    'w-full h-11 rounded-xl px-3 text-sm outline-none border',
+                    isDarkMode
+                      ? 'bg-[#2A2A2A] border-white/8 text-[#FDFBF0]'
+                      : 'bg-[#FDFBF0] border-black/8',
+                  )}
+                />
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleSaveDebtManual}
+            disabled={savingDebt || !debtFormNombre.trim() || !esMontoValido(parseNum(debtFormMonto))}
+            className={cn(
+              'w-full h-12 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all',
+              savingDebt || !debtFormNombre.trim() || !esMontoValido(parseNum(debtFormMonto))
+                ? isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98]',
+            )}
+          >
+            {savingDebt
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</>
+              : <><Check className="w-4 h-4" /> Guardar</>}
+          </button>
+        </div>
+      )}
 
       <div className="space-y-3">
         {filteredDebts.length === 0 ? (

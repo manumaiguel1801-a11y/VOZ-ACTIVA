@@ -106,6 +106,7 @@ export interface UserProfile {
   phone: string;
   birthDate: string;
   email?: string;
+  photoURL?: string;
   createdAt: any; // Timestamp
   telegramChatId?: string;
   linkCode?: { code: string; expiresAt: any };

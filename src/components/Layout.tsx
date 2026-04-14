@@ -16,6 +16,7 @@ import { Tab, Debt, InventoryProduct } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { OnboardingManual } from './OnboardingManual';
 import { SuggestionsModal } from './SuggestionsModal';
+import { Avatar } from './ProfileView';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,6 +28,9 @@ interface LayoutProps {
   userId: string;
   debts: Debt[];
   inventory: InventoryProduct[];
+  profilePhotoURL?: string;
+  profileFirstName?: string;
+  profileLastName?: string;
 }
 
 export const Layout = ({
@@ -39,6 +43,9 @@ export const Layout = ({
   userId,
   debts,
   inventory,
+  profilePhotoURL,
+  profileFirstName = '',
+  profileLastName = '',
 }: LayoutProps) => {
   const [showManual, setShowManual] = React.useState(false);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
@@ -82,12 +89,13 @@ export const Layout = ({
         isDarkMode ? "bg-[#0D0D0D]/85" : "bg-[#FDFBF0]/85"
       )}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#D4AF37]">
-            <img 
-              src="https://picsum.photos/seed/vendor/200/200" 
-              alt="Perfil" 
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover"
+          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#D4AF37] flex-shrink-0">
+            <Avatar
+              photoURL={profilePhotoURL}
+              firstName={profileFirstName}
+              lastName={profileLastName}
+              size="sm"
+              isDarkMode={isDarkMode}
             />
           </div>
           <h1 className="font-['Plus_Jakarta_Sans'] font-bold text-2xl tracking-tight text-[#B8860B]">

@@ -107,6 +107,9 @@ export default function App() {
       userId={user.uid}
       debts={debts}
       inventory={inventory}
+      profilePhotoURL={profile?.photoURL}
+      profileFirstName={profile?.firstName}
+      profileLastName={profile?.lastName}
     >
       <AnimatePresence mode="wait">
         {activeTab === 'inicio' && (
