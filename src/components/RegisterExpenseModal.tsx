@@ -46,6 +46,7 @@ export const RegisterExpenseModal = ({ userId, isDarkMode, onClose }: Props) => 
         amount,
         category: category || 'Otro',
         createdAt: serverTimestamp(),
+        source: 'manual',
       });
       setDone(true);
       setTimeout(onClose, 900);

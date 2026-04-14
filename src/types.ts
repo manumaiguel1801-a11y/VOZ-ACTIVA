@@ -21,9 +21,10 @@ export interface SaleItem {
 
 export interface Sale {
   id: string;
-  items: SaleItem[];   // multi-product
+  items: SaleItem[];
   total: number;
   createdAt: any;
+  source?: 'manual' | 'chat' | 'telegram' | 'camara';
   // legacy fields for old single-product sales
   product?: string;
   quantity?: number;
@@ -44,11 +45,20 @@ export function getSaleQtyLabel(sale: Sale): string {
   return qty > 1 ? `×${qty}` : '';
 }
 
+export interface ExpenseItem {
+  product: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
 export interface Expense {
   id: string;
   concept: string;
   amount: number;
   createdAt: any;
+  items?: ExpenseItem[];
+  source?: 'manual' | 'chat' | 'telegram' | 'camara';
 }
 
 export interface Debt {
@@ -97,4 +107,6 @@ export interface UserProfile {
   birthDate: string;
   email?: string;
   createdAt: any; // Timestamp
+  telegramChatId?: string;
+  linkCode?: { code: string; expiresAt: any };
 }

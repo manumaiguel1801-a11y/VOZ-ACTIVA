@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { 
-  X, 
-  ChevronRight, 
-  ChevronLeft, 
-  MessageCircle, 
-  Camera, 
-  TrendingUp, 
-  Package, 
+import {
+  X,
+  ChevronRight,
+  ChevronLeft,
+  MessageCircle,
+  Camera,
+  TrendingUp,
+  Package,
   User,
   Sparkles,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Send,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -49,6 +50,24 @@ export const OnboardingManual = ({ isOpen, onClose, isDarkMode }: OnboardingProp
       example: (
         <div className="bg-black/10 p-3 rounded-xl mt-4 italic text-sm">
           "Epa compadre, anótame 20 barras de la venta de hoy"
+        </div>
+      )
+    },
+    {
+      title: "Registra desde Telegram",
+      description: "¿Sin tiempo de abrir la app? Escríbele al bot de Telegram y registramos todo automáticamente. Vincúlalo desde tu Perfil.",
+      icon: <Send className="w-12 h-12" />,
+      color: "from-[#229ED9] to-[#1a7fb5]",
+      example: (
+        <div className="mt-4 space-y-2 text-left">
+          <div className="bg-[#229ED9]/15 border border-[#229ED9]/20 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-medium inline-block max-w-[90%]">
+            "vendí 3 almuerzos a 12 mil y gasté 8 mil en gas"
+          </div>
+          <div className="flex justify-end">
+            <div className="bg-[#229ED9] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm font-bold text-white max-w-[80%]">
+              ✅ Registré venta $36.000 y gasto $8.000
+            </div>
+          </div>
         </div>
       )
     },

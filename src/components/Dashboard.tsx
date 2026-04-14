@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ShoppingBag, BarChart2, TrendingDown, ChevronRight } from 'lucide-react';
+import { Plus, ShoppingBag, BarChart2, TrendingDown, ChevronRight, Send, MessageCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
@@ -24,6 +24,26 @@ const montoValido = (v: unknown): v is number =>
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
+}
+
+function getExpenseDate(e: Expense): Date {
+  return e.createdAt?.toDate ? e.createdAt.toDate() : new Date();
+}
+
+function SourceBadge({ source }: { source?: string }) {
+  if (!source || source === 'manual') return null;
+  const config = {
+    telegram: { label: 'Telegram', color: '#229ED9', Icon: Send },
+    chat:     { label: 'Chat IA',  color: '#8B5CF6', Icon: MessageCircle },
+    camara:   { label: 'Cámara',   color: '#F59E0B', Icon: null },
+  }[source];
+  if (!config) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wide" style={{ color: config.color }}>
+      {config.Icon && <config.Icon className="w-2.5 h-2.5" />}
+      {config.label}
+    </span>
+  );
 }
 
 function filterByTime(date: Date, filter: TimeFilter): boolean {
@@ -83,11 +103,14 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
     return { todayIncome, todayExpenses, totalBalance };
   }, [sales, expenses]);
 
-  // Filtered list
-  const filteredSales = useMemo(
-    () => sales.filter((s) => filterByTime(getSaleDate(s), timeFilter)),
-    [sales, timeFilter]
-  );
+  // Combined + filtered movement list (sales + expenses), sorted newest first
+  const filteredMovements = useMemo(() => {
+    const items = [
+      ...sales.map(s => ({ kind: 'sale' as const, data: s, date: getSaleDate(s) })),
+      ...expenses.map(e => ({ kind: 'expense' as const, data: e, date: getExpenseDate(e) })),
+    ].filter(m => filterByTime(m.date, timeFilter));
+    return items.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [sales, expenses, timeFilter]);
 
   // Weekly chart
   const weeklyData = useMemo(() => {
@@ -239,7 +262,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
             ))}
           </div>
 
-          {filteredSales.length === 0 ? (
+          {filteredMovements.length === 0 ? (
             <div className={cn(
               'p-10 rounded-xl flex flex-col items-center justify-center gap-3 text-center',
               isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
@@ -259,33 +282,67 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredSales.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedSale(s)}
-                  className={cn(
-                    'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
-                    isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
-                      <ShoppingBag className="w-6 h-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold truncate">{getSaleLabel(s)}</p>
-                      <p className={cn('text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
-                        {formatRelativeTime(getSaleDate(s))}
-                        {getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <p className="font-bold text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
-                    <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
-                  </div>
-                </button>
-              ))}
+              {filteredMovements.map((m) => {
+                if (m.kind === 'sale') {
+                  const s = m.data;
+                  return (
+                    <button
+                      key={`s-${s.id}`}
+                      onClick={() => setSelectedSale(s)}
+                      className={cn(
+                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
+                        isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
+                          <ShoppingBag className="w-6 h-6" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold truncate">{getSaleLabel(s)}</p>
+                          <div className={cn('flex items-center gap-1.5 text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
+                            <span>{formatRelativeTime(m.date)}{getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</span>
+                            <SourceBadge source={s.source} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <p className="font-bold text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
+                        <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+                      </div>
+                    </button>
+                  );
+                } else {
+                  const e = m.data;
+                  return (
+                    <button
+                      key={`e-${e.id}`}
+                      onClick={() => setSelectedExpense(e)}
+                      className={cn(
+                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
+                        isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0', isDarkMode ? 'bg-red-500/20' : 'bg-red-50')}>
+                          <TrendingDown className="w-6 h-6 text-red-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold truncate">{e.concept}</p>
+                          <div className={cn('flex items-center gap-1.5 text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
+                            <span>{formatRelativeTime(m.date)}</span>
+                            <SourceBadge source={e.source} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <p className="font-bold text-red-500">-${e.amount.toLocaleString('es-CO')}</p>
+                        <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+                      </div>
+                    </button>
+                  );
+                }
+              })}
             </div>
           )}
         </section>

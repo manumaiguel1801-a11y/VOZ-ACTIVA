@@ -154,11 +154,41 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
             {/* ── EXPENSE ── */}
             {isExpense && (() => {
               const exp = item.data;
+              const hasItems = exp.items && exp.items.length > 0;
               return (
                 <>
-                  <Row label="Concepto" value={exp.concept} isDarkMode={isDarkMode} />
-                  {(exp as any).category && (
-                    <Row label="Categoría" value={(exp as any).category} isDarkMode={isDarkMode} />
+                  {hasItems ? (
+                    <div className="space-y-1 mb-4">
+                      <p className={cn('text-[11px] font-black uppercase tracking-widest mb-3', isDarkMode ? 'text-white/40' : 'text-black/40')}>
+                        Productos comprados
+                      </p>
+                      <div className={cn('grid text-[10px] font-black uppercase tracking-widest opacity-40 px-4 pb-1 gap-2')}
+                        style={{ gridTemplateColumns: '1fr 48px 80px 80px' }}>
+                        <span>Producto</span>
+                        <span className="text-center">Cant.</span>
+                        <span className="text-right">P. Unit.</span>
+                        <span className="text-right">Subtotal</span>
+                      </div>
+                      {exp.items!.map((it, i) => (
+                        <div
+                          key={i}
+                          className={cn('grid gap-2 items-center px-4 py-3 rounded-xl', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#f8f8f5]')}
+                          style={{ gridTemplateColumns: '1fr 48px 80px 80px' }}
+                        >
+                          <span className="font-bold text-sm truncate">{it.product}</span>
+                          <span className={cn('text-sm text-center font-bold', isDarkMode ? 'text-white/60' : 'text-black/50')}>×{it.quantity}</span>
+                          <span className={cn('text-sm text-right', isDarkMode ? 'text-white/60' : 'text-black/50')}>${it.unitPrice.toLocaleString('es-CO')}</span>
+                          <span className="text-sm font-black text-right text-red-500">${it.subtotal.toLocaleString('es-CO')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <Row label="Concepto" value={exp.concept} isDarkMode={isDarkMode} />
+                      {(exp as any).category && (
+                        <Row label="Categoría" value={(exp as any).category} isDarkMode={isDarkMode} />
+                      )}
+                    </>
                   )}
                   <div className={cn('flex justify-between items-center p-4 rounded-xl mt-2', isDarkMode ? 'bg-red-500/10' : 'bg-red-50')}>
                     <span className="font-black text-sm opacity-60">Total gasto</span>
