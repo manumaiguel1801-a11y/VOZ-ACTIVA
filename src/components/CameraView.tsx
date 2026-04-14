@@ -1307,7 +1307,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                   >
                     {payingDebtId === item.id
                       ? <><Loader2 className="w-4 h-4 animate-spin" /> Registrando...</>
-                      : <><CheckCircle2 className="w-4 h-4" /> Ya me pagó</>}
+                      : <><CheckCircle2 className="w-4 h-4" /> Pago recibido</>}
                   </button>
                 ) : (
                   <button
@@ -1322,7 +1322,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                   >
                     {payingDebtId === item.id
                       ? <><Loader2 className="w-4 h-4 animate-spin" /> Registrando...</>
-                      : <><CheckCircle2 className="w-4 h-4" /> Ya pagué</>}
+                      : <><CheckCircle2 className="w-4 h-4" /> Pago realizado</>}
                   </button>
                 )}
               </div>

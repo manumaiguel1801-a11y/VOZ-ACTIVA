@@ -8,6 +8,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from '
 import { db } from '../firebase';
 import { cn, capitalizar } from '../lib/utils';
 import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel, getPrecioVenta, getPrecioCompra, getMargen } from '../types';
+import { MovementDetailModal } from './MovementDetailModal';
 
 function getSaleDate(sale: Sale): Date {
   return sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date();
@@ -474,6 +475,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
 // ─── Sales Section ─────────────────────────────────────────────────────────
 
 const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[] }) => {
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+
   const todayTotal = useMemo(() => {
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
@@ -517,7 +520,7 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
           />
         ) : (
           sales.map((sale) => (
-            <div key={sale.id} className={cn('p-4 rounded-xl flex items-center justify-between transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+            <div key={sale.id} onClick={() => setSelectedSale(sale)} className={cn('p-4 rounded-xl flex items-center justify-between transition-colors cursor-pointer active:scale-[0.99]', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#B8860B]/10 rounded-lg flex items-center justify-center text-[#B8860B]">
                   <ShoppingBag className="w-5 h-5" />
@@ -540,6 +543,14 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
           ))
         )}
       </div>
+
+      {selectedSale && (
+        <MovementDetailModal
+          item={{ kind: 'sale', data: selectedSale }}
+          isDarkMode={isDarkMode}
+          onClose={() => setSelectedSale(null)}
+        />
+      )}
     </div>
   );
 };
