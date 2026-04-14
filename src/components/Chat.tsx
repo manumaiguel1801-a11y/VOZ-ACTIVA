@@ -469,6 +469,28 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
       const dataType = response.data?.type;
       const isDebtPayment = dataType === 'pago-deuda-debo' || dataType === 'cobro-deuda-me-deben';
 
+      // ── Extra movements (multi-action messages) ─────────────────────────────
+      // Save any additional simple actions (gastos, new debts) that Gemini put
+      // in response.movements[], then let the primary data flow run as usual.
+      if (response.movements && response.movements.length > 0) {
+        const extraLines: string[] = [];
+        for (const mov of response.movements) {
+          if (!esMontoValido(mov.amount)) continue;
+          try {
+            await saveToFirestore(userId, mov as any);
+            if (mov.type === 'deuda-me-deben') extraLines.push(`• ${mov.debtorName ?? mov.concept} te debe $${mov.amount.toLocaleString('es-CO')}`);
+            else if (mov.type === 'deuda-debo') extraLines.push(`• Debes $${mov.amount.toLocaleString('es-CO')} a ${mov.debtorName ?? mov.concept}`);
+            else if (mov.type === 'gasto') extraLines.push(`• Gasto: ${mov.concept} — $${mov.amount.toLocaleString('es-CO')}`);
+            else if (mov.type === 'venta') extraLines.push(`• Venta: ${mov.concept} — $${mov.amount.toLocaleString('es-CO')}`);
+          } catch (e) {
+            console.error('[Chat] Error guardando movimiento extra:', e);
+          }
+        }
+        if (extraLines.length > 0) {
+          addBotMsg(`También registré:\n${extraLines.join('\n')}`);
+        }
+      }
+
       // ── Debt payment / collection flow ─────────────────────────────────────
       if (isDebtPayment && response.data) {
         const debtType = dataType === 'pago-deuda-debo' ? 'debo' : 'me-deben';

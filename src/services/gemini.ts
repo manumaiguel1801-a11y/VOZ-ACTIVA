@@ -1,17 +1,21 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+export interface ChatMovement {
+  type: 'venta' | 'gasto' | 'compra' | 'deuda-me-deben' | 'deuda-debo' | 'pago-deuda-debo' | 'cobro-deuda-me-deben';
+  amount: number;
+  concept: string;
+  quantity?: number;
+  unitPrice?: number;
+  debtorName?: string;
+  isPartial?: boolean;
+  payments?: Array<{ debtorName: string; amount: number; isPartial: boolean }>;
+}
+
 export interface ChatResponse {
   message: string;
-  data?: {
-    type: 'venta' | 'gasto' | 'compra' | 'deuda-me-deben' | 'deuda-debo' | 'pago-deuda-debo' | 'cobro-deuda-me-deben';
-    amount: number;
-    concept: string;
-    quantity?: number;
-    unitPrice?: number;
-    debtorName?: string;
-    isPartial?: boolean;
-    payments?: Array<{ debtorName: string; amount: number; isPartial: boolean }>;
-  };
+  data?: ChatMovement;
+  // Additional simple movements (gastos, new debts) when user sends multiple actions
+  movements?: Array<Pick<ChatMovement, 'type' | 'amount' | 'concept' | 'debtorName' | 'isPartial' | 'quantity' | 'unitPrice'>>;
 }
 
 const SYSTEM_INSTRUCTION = `Eres el asistente inteligente de "Voz-Activa", una aplicación para micronegocios colombianos.
@@ -142,14 +146,27 @@ El usuario puede dictar por micrófono. El reconocimiento de voz comete errores 
 FORMATO DE RESPUESTA (JSON estricto):
 {
   "message": "Tu respuesta textual",
-  "data": {
-    "type": "venta" | "gasto" | "deuda-me-deben" | "deuda-debo",
-    "amount": número (total),
-    "concept": "nombre del producto o concepto SIN cantidad",
-    "quantity": número (unidades, solo para ventas),
-    "unitPrice": número (precio unitario, solo para ventas),
-    "debtorName": "nombre (solo para deudas)"
-  }
+  "data": { acción PRINCIPAL },
+  "movements": [ acción2, acción3, ... ]
+}
+
+REGLA MULTI-ACCIÓN: Si el mensaje tiene varias acciones (ej: un gasto + una deuda + otra deuda):
+- "data": la acción principal (la más compleja o la primera mencionada)
+- "movements": todas las DEMÁS acciones, cada una con sus campos. NO repitas en movements lo que ya está en data.
+- Si solo hay una acción, deja movements vacío o ausente.
+
+Ejemplo — "gasté 70k en el casino, le debo 1M al banco y Laura me debe 400k":
+→ data: {type:"gasto", amount:70000, concept:"Casino"}
+→ movements: [{type:"deuda-debo", amount:1000000, concept:"Deuda banco", debtorName:"banco"}, {type:"deuda-me-deben", amount:400000, concept:"Deuda Laura", debtorName:"Laura"}]
+
+data schema:
+{
+  "type": "venta" | "gasto" | "compra" | "deuda-me-deben" | "deuda-debo" | "pago-deuda-debo" | "cobro-deuda-me-deben",
+  "amount": número (total),
+  "concept": "nombre SIN cantidad",
+  "quantity": número (solo ventas),
+  "unitPrice": número (solo ventas),
+  "debtorName": "nombre (solo deudas)"
 }`;
 
 // Modelos en orden de prioridad — el primero falla → prueba el siguiente
@@ -176,6 +193,32 @@ async function generateWithFallback(
   throw lastError;
 }
 
+const MOVEMENT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    type: { type: Type.STRING, enum: ['venta', 'gasto', 'compra', 'deuda-me-deben', 'deuda-debo', 'pago-deuda-debo', 'cobro-deuda-me-deben'] },
+    amount: { type: Type.NUMBER },
+    concept: { type: Type.STRING },
+    quantity: { type: Type.NUMBER },
+    unitPrice: { type: Type.NUMBER },
+    debtorName: { type: Type.STRING },
+    isPartial: { type: Type.BOOLEAN },
+    payments: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          debtorName: { type: Type.STRING },
+          amount: { type: Type.NUMBER },
+          isPartial: { type: Type.BOOLEAN },
+        },
+        required: ['debtorName', 'amount', 'isPartial'],
+      },
+    },
+  },
+  required: ['type', 'amount', 'concept'],
+};
+
 const SCHEMA_CONFIG = {
   systemInstruction: SYSTEM_INSTRUCTION,
   responseMimeType: "application/json",
@@ -183,30 +226,10 @@ const SCHEMA_CONFIG = {
     type: Type.OBJECT,
     properties: {
       message: { type: Type.STRING },
-      data: {
-        type: Type.OBJECT,
-        properties: {
-          type: { type: Type.STRING, enum: ['venta', 'gasto', 'compra', 'deuda-me-deben', 'deuda-debo', 'pago-deuda-debo', 'cobro-deuda-me-deben'] },
-          amount: { type: Type.NUMBER },
-          concept: { type: Type.STRING },
-          quantity: { type: Type.NUMBER },
-          unitPrice: { type: Type.NUMBER },
-          debtorName: { type: Type.STRING },
-          isPartial: { type: Type.BOOLEAN },
-          payments: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                debtorName: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                isPartial: { type: Type.BOOLEAN },
-              },
-              required: ['debtorName', 'amount', 'isPartial'],
-            },
-          },
-        },
-        required: ['type', 'amount', 'concept'],
+      data: MOVEMENT_SCHEMA,
+      movements: {
+        type: Type.ARRAY,
+        items: MOVEMENT_SCHEMA,
       },
     },
     required: ['message'],
