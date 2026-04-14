@@ -217,8 +217,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
               )}
             />
             <div className="grid grid-cols-3 gap-3">
-              <div className="relative">
-                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+              <div className="relative pt-3">
+                <label className={cn('absolute top-1.5 left-3 text-[10px] font-bold px-1 rounded z-10', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
                   Cantidad
                 </label>
                 <input
@@ -235,8 +235,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                   )}
                 />
               </div>
-              <div className="relative">
-                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+              <div className="relative pt-3">
+                <label className={cn('absolute top-1.5 left-3 text-[10px] font-bold px-1 rounded z-10', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
                   P. compra
                 </label>
                 <div className="relative">
@@ -256,8 +256,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                   />
                 </div>
               </div>
-              <div className="relative">
-                <label className={cn('absolute -top-2 left-3 text-[10px] font-bold px-1 rounded', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
+              <div className="relative pt-3">
+                <label className={cn('absolute top-1.5 left-3 text-[10px] font-bold px-1 rounded z-10', isDarkMode ? 'bg-[#1A1A1A] text-white/40' : 'bg-white text-black/40')}>
                   P. venta
                 </label>
                 <div className="relative">
