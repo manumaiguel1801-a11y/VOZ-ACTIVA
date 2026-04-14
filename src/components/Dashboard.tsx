@@ -149,16 +149,16 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
           <div className="relative z-10">
             <p className="text-sm opacity-90 mb-1">Saldo total</p>
             <h2 className="text-5xl font-extrabold tracking-tight mb-6">
-              ${totalBalance.toLocaleString('es-CO')}
+              ${(totalBalance || 0).toLocaleString('es-CO')}
             </h2>
             <div className="flex gap-4">
               <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
                 <p className="text-xs opacity-80 mb-1">Ingresos de hoy</p>
-                <p className="text-xl font-bold">+${todayIncome.toLocaleString('es-CO')}</p>
+                <p className="text-xl font-bold">+${(todayIncome || 0).toLocaleString('es-CO')}</p>
               </div>
               <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
                 <p className="text-xs opacity-80 mb-1">Gastos</p>
-                <p className="text-xl font-bold">-${todayExpenses.toLocaleString('es-CO')}</p>
+                <p className="text-xl font-bold">-${(todayExpenses || 0).toLocaleString('es-CO')}</p>
               </div>
             </div>
           </div>
@@ -201,7 +201,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               </p>
             </div>
             <span className="text-[#B8860B] font-bold text-lg">
-              ${weekTotal.toLocaleString('es-CO')}
+              ${(weekTotal || 0).toLocaleString('es-CO')}
             </span>
           </div>
           <div className="w-full" style={{ height: 160 }}>
@@ -307,7 +307,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <p className="font-bold text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
+                        <p className="font-bold text-[#B8860B]">+${(s.total || 0).toLocaleString('es-CO')}</p>
                         <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                       </div>
                     </button>
@@ -336,7 +336,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <p className="font-bold text-red-500">-${e.amount.toLocaleString('es-CO')}</p>
+                        <p className="font-bold text-red-500">-${(e.amount || 0).toLocaleString('es-CO')}</p>
                         <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                       </div>
                     </button>

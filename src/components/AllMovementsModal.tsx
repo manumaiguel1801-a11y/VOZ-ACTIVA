@@ -147,16 +147,16 @@ export const AllMovementsModal = ({ isDarkMode, sales, expenses, onClose }: Prop
             <div className="flex gap-3 mb-4">
               <div className={cn('flex-1 p-3 rounded-xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-0.5">Ingresos</p>
-                <p className="font-black text-[#B8860B]">${totalIngresos.toLocaleString('es-CO')}</p>
+                <p className="font-black text-[#B8860B]">${(totalIngresos || 0).toLocaleString('es-CO')}</p>
               </div>
               <div className={cn('flex-1 p-3 rounded-xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-0.5">Gastos</p>
-                <p className="font-black opacity-70">${totalGastos.toLocaleString('es-CO')}</p>
+                <p className="font-black opacity-70">${(totalGastos || 0).toLocaleString('es-CO')}</p>
               </div>
               <div className={cn('flex-1 p-3 rounded-xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-0.5">Neto</p>
                 <p className={cn('font-black', (totalIngresos - totalGastos) >= 0 ? 'text-[#B8860B]' : 'text-red-500')}>
-                  ${(totalIngresos - totalGastos).toLocaleString('es-CO')}
+                  ${((totalIngresos || 0) - (totalGastos || 0)).toLocaleString('es-CO')}
                 </p>
               </div>
             </div>
@@ -220,7 +220,7 @@ export const AllMovementsModal = ({ isDarkMode, sales, expenses, onClose }: Prop
                             </div>
                           </div>
                           <p className={cn('font-black text-base', m.type === 'venta' ? 'text-[#B8860B]' : 'text-red-500')}>
-                            {m.type === 'venta' ? '+' : '-'}${m.amount.toLocaleString('es-CO')}
+                            {m.type === 'venta' ? '+' : '-'}${(m.amount || 0).toLocaleString('es-CO')}
                           </p>
                         </div>
                       ))}

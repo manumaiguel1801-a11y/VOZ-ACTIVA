@@ -98,7 +98,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
             <ArrowUpRight className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest">Ingresos</span>
           </div>
-          <p className="text-2xl font-black text-[#B8860B]">${monthIncome.toLocaleString('es-CO')}</p>
+          <p className="text-2xl font-black text-[#B8860B]">${(monthIncome || 0).toLocaleString('es-CO')}</p>
           <p className="text-[10px] opacity-40 mt-1">Este mes</p>
         </div>
         <div className={cn('p-5 rounded-2xl transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
@@ -106,7 +106,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
             <ArrowDownRight className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest">Gastos</span>
           </div>
-          <p className="text-2xl font-black opacity-80">${monthExpenses.toLocaleString('es-CO')}</p>
+          <p className="text-2xl font-black opacity-80">${(monthExpenses || 0).toLocaleString('es-CO')}</p>
           <p className="text-[10px] opacity-40 mt-1">Este mes</p>
         </div>
       </div>
@@ -120,7 +120,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </div>
           <div className={cn('flex items-center gap-1 font-bold text-sm', 'text-[#B8860B]')}>
             <TrendingUp className="w-4 h-4" />
-            ${weekTotal.toLocaleString('es-CO')}
+            ${(weekTotal || 0).toLocaleString('es-CO')}
           </div>
         </div>
         <div className="h-48 w-full" style={{ minHeight: 192 }}>
@@ -188,7 +188,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <p className="font-black text-base text-[#B8860B]">+${s.total.toLocaleString('es-CO')}</p>
+                  <p className="font-black text-base text-[#B8860B]">+${(s.total || 0).toLocaleString('es-CO')}</p>
                   <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                 </div>
               </button>
@@ -213,7 +213,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <p className="font-black text-base text-red-500">-${e.amount.toLocaleString('es-CO')}</p>
+                  <p className="font-black text-base text-red-500">-${(e.amount || 0).toLocaleString('es-CO')}</p>
                   <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                 </div>
               </button>

@@ -360,13 +360,13 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                   {!isEditing ? (
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <p className="font-bold text-[#B8860B]">${getPrecioVenta(product).toLocaleString('es-CO')}</p>
+                        <p className="font-bold text-[#B8860B]">${(getPrecioVenta(product) || 0).toLocaleString('es-CO')}</p>
                         <p className={cn('text-xs font-bold', lowStock ? 'text-red-400' : 'opacity-50')}>
                           Stock: {product.cantidad ?? 0}
                         </p>
                         {getPrecioCompra(product) > 0 && (
                           <p className="text-[10px] opacity-40">
-                            Costo: ${getPrecioCompra(product).toLocaleString('es-CO')}
+                            Costo: ${(getPrecioCompra(product) || 0).toLocaleString('es-CO')}
                           </p>
                         )}
                         {getMargen(product) !== null && (
@@ -486,7 +486,7 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
         <div className="flex justify-between items-start mb-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest opacity-70">Ventas de Hoy</p>
-            <h2 className="text-3xl font-black">${todayTotal.toLocaleString('es-CO')}</h2>
+            <h2 className="text-3xl font-black">${(todayTotal || 0).toLocaleString('es-CO')}</h2>
           </div>
           <div className="p-2 bg-black/10 rounded-lg">
             <TrendingUp className="w-6 h-6" />
@@ -531,7 +531,7 @@ const SalesSection = ({ isDarkMode, sales }: { isDarkMode: boolean; sales: Sale[
                 </div>
               </div>
               <div className="text-right">
-                <p className="font-bold text-[#B8860B]">${sale.total.toLocaleString('es-CO')}</p>
+                <p className="font-bold text-[#B8860B]">${(sale.total || 0).toLocaleString('es-CO')}</p>
                 <div className="flex items-center justify-end text-[10px] text-green-500 font-bold">
                   <ArrowUpRight className="w-3 h-3" /> EXITOSO
                 </div>
