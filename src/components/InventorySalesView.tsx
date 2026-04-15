@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn, capitalizar } from '../lib/utils';
+import { cn, capitalizar, detectarGenero } from '../lib/utils';
 import { Sale, InventoryProduct, getSaleLabel, getSaleQtyLabel, getPrecioVenta, getPrecioCompra, getMargen } from '../types';
 import { MovementDetailModal } from './MovementDetailModal';
 
@@ -189,14 +189,28 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
 
   const inventoryTips = useMemo(() => {
     const result: { id: string; text: string }[] = [];
+
     inventory.forEach(p => {
       const qty = p.cantidad ?? 0;
+      const genero = detectarGenero(p.nombre);
+      const nombre = p.nombre;
+
       if (qty === 0) {
-        result.push({ id: `zero-${p.id}`, text: `${p.nombre} se acabó. Es momento de reponer.` });
+        const texto =
+          genero === 'femenino' ? `Se te acabaron las ${nombre}. Toca reponer.` :
+          genero === 'masculino' ? `Se te acabaron los ${nombre}. Toca reponer.` :
+          `Se te acabó el ${nombre}. Toca reponer.`;
+        result.push({ id: `zero-${p.id}`, text: texto });
       } else if (qty < 5) {
-        result.push({ id: `low-${p.id}`, text: `Te queda poco ${p.nombre}, solo ${qty} ${qty === 1 ? 'unidad' : 'unidades'}. ¿Ya pediste más?` });
+        const unidad = qty === 1 ? 'unidad' : 'unidades';
+        const texto =
+          genero === 'femenino' ? `Te quedan pocas ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?` :
+          genero === 'masculino' ? `Te quedan pocos ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?` :
+          `Te queda poco de ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?`;
+        result.push({ id: `low-${p.id}`, text: texto });
       }
     });
+
     if (inventory.length > 0) {
       const ts = inventory.map(p => {
         const d = p.updatedAt?.toDate ? p.updatedAt.toDate() : p.createdAt?.toDate ? p.createdAt.toDate() : null;
@@ -206,6 +220,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
         result.push({ id: 'sin-actualizar', text: 'Llevas 3 días sin actualizar el inventario. ¿Todo bien con el stock?' });
       }
     }
+
     return result.filter(t => !dismissedTips.has(t.id)).slice(0, 3);
   }, [inventory, dismissedTips]);
 
