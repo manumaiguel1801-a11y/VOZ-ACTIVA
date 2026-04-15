@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight, Send, MessageCircle, X } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight, Send, MessageCircle, X, Lightbulb } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
@@ -50,11 +50,11 @@ interface Props {
 // ─── Tip card ────────────────────────────────────────────────────────────────
 
 const TipCard: React.FC<{ text: string; onDismiss: () => void; isDarkMode: boolean }> = ({ text, onDismiss, isDarkMode }) => (
-  <div className={cn(
-    'flex-shrink-0 w-72 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4',
-    isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm',
-  )} style={{ borderLeftColor: '#F5A623' }}>
-    <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/80' : 'text-[#2e2f2d]/80')}>{text}</p>
+  <div
+    className={cn('flex-shrink-0 w-64 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#F5F0E8]')}
+    style={{ borderLeftColor: '#F5A623' }}
+  >
+    <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/70' : 'text-[#5b5c5a]')}>{text}</p>
     <button onClick={onDismiss} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity mt-0.5">
       <X className="w-3.5 h-3.5" />
     </button>
@@ -131,7 +131,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
       result.push({ id: 'mejor-dia', text: '¡Hoy fue tu mejor día de ventas! Así se hace.' });
     }
 
-    return result.filter(t => !dismissedTips.has(t.id));
+    return result.filter(t => !dismissedTips.has(t.id)).slice(0, 3);
   }, [monthIncome, monthExpenses, sales, expenses, weeklyData, dismissedTips]);
 
   return (
@@ -196,23 +196,6 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </ResponsiveContainer>
         </div>
       </section>
-
-      {/* Consejos */}
-      {tips.length > 0 && (
-        <section className="space-y-2">
-          <p className={cn('text-[10px] font-black uppercase tracking-widest px-1', isDarkMode ? 'text-white/30' : 'text-black/30')}>Consejos</p>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
-            {tips.map(tip => (
-              <TipCard
-                key={tip.id}
-                text={tip.text}
-                isDarkMode={isDarkMode}
-                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
-              />
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Transaction list */}
       <section className="space-y-4">
@@ -283,6 +266,26 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </div>
         )}
       </section>
+
+      {/* Consejos */}
+      {tips.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {tips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                isDarkMode={isDarkMode}
+                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {selectedSale && (
         <MovementDetailModal item={{ kind: 'sale', data: selectedSale }} isDarkMode={isDarkMode} onClose={() => setSelectedSale(null)} />

@@ -17,6 +17,7 @@ import {
   TrendingDown,
   X,
   Check,
+  Lightbulb,
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -493,7 +494,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           result.push({ id: `tip-${d.id}`, text: `Llevas ${days} días debiéndole a ${d.name}. Ojo para no acumular.` });
         }
       });
-    return result.filter(t => !dismissedDebtTips.has(t.id));
+    return result.filter(t => !dismissedDebtTips.has(t.id)).slice(0, 3);
   }, [debts, dismissedDebtTips]);
 
   // ── Table styles ──────────────────────────────────────────────────────────
@@ -1126,10 +1127,10 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
   const TipCard: React.FC<{ text: string; onDismiss: () => void }> = ({ text, onDismiss }) => (
     <div
-      className={cn('flex-shrink-0 w-72 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}
+      className={cn('flex-shrink-0 w-64 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#F5F0E8]')}
       style={{ borderLeftColor: '#F5A623' }}
     >
-      <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/80' : 'text-[#2e2f2d]/80')}>{text}</p>
+      <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/70' : 'text-[#5b5c5a]')}>{text}</p>
       <button onClick={onDismiss} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity mt-0.5">
         <X className="w-3.5 h-3.5" />
       </button>
@@ -1268,21 +1269,6 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
         </div>
       )}
 
-      {debtTips.length > 0 && (
-        <div className="space-y-2">
-          <p className={cn('text-[10px] font-black uppercase tracking-widest px-1', isDarkMode ? 'text-white/30' : 'text-black/30')}>Consejos</p>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
-            {debtTips.map(tip => (
-              <TipCard
-                key={tip.id}
-                text={tip.text}
-                onDismiss={() => setDismissedDebtTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="space-y-3">
         {filteredDebts.length === 0 ? (
           <div className={cn('p-10 rounded-2xl flex flex-col items-center justify-center gap-3 text-center', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
@@ -1375,6 +1361,25 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           ))
         )}
       </div>
+
+      {/* Consejos */}
+      {debtTips.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {debtTips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                onDismiss={() => setDismissedDebtTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Package, ShoppingBag, Plus, Search,
   TrendingUp, Box, History, ArrowUpRight,
-  Pencil, Trash2, Check, X, Loader2,
+  Pencil, Trash2, Check, X, Loader2, Lightbulb,
 } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -31,6 +31,18 @@ interface Props {
   inventory: InventoryProduct[];
   userId: string;
 }
+
+const TipCard: React.FC<{ text: string; onDismiss: () => void; isDarkMode: boolean }> = ({ text, onDismiss, isDarkMode }) => (
+  <div
+    className={cn('flex-shrink-0 w-64 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#F5F0E8]')}
+    style={{ borderLeftColor: '#F5A623' }}
+  >
+    <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/70' : 'text-[#5b5c5a]')}>{text}</p>
+    <button onClick={onDismiss} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity mt-0.5">
+      <X className="w-3.5 h-3.5" />
+    </button>
+  </div>
+);
 
 export const InventorySalesView = ({ isDarkMode, sales, inventory, userId }: Props) => {
   const [activeSubTab, setActiveSubTab] = useState<'inventario' | 'ventas'>('inventario');
@@ -84,6 +96,7 @@ interface InventorySectionProps {
 const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionProps) => {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [dismissedTips, setDismissedTips] = useState<Set<string>>(() => new Set());
   const [formNombre, setFormNombre] = useState('');
   const [formCantidad, setFormCantidad] = useState('');
   const [formPrecioCompra, setFormPrecioCompra] = useState('');
@@ -173,6 +186,28 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
       setDeletingId(null);
     }
   };
+
+  const inventoryTips = useMemo(() => {
+    const result: { id: string; text: string }[] = [];
+    inventory.forEach(p => {
+      const qty = p.cantidad ?? 0;
+      if (qty === 0) {
+        result.push({ id: `zero-${p.id}`, text: `${p.nombre} se acabó. Es momento de reponer.` });
+      } else if (qty < 5) {
+        result.push({ id: `low-${p.id}`, text: `Te queda poco ${p.nombre}, solo ${qty} ${qty === 1 ? 'unidad' : 'unidades'}. ¿Ya pediste más?` });
+      }
+    });
+    if (inventory.length > 0) {
+      const ts = inventory.map(p => {
+        const d = p.updatedAt?.toDate ? p.updatedAt.toDate() : p.createdAt?.toDate ? p.createdAt.toDate() : null;
+        return d ? d.getTime() : 0;
+      }).filter(t => t > 0);
+      if (ts.length > 0 && (Date.now() - Math.max(...ts)) / 86400000 > 3) {
+        result.push({ id: 'sin-actualizar', text: 'Llevas 3 días sin actualizar el inventario. ¿Todo bien con el stock?' });
+      }
+    }
+    return result.filter(t => !dismissedTips.has(t.id)).slice(0, 3);
+  }, [inventory, dismissedTips]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -352,12 +387,6 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold truncate">{product.nombre}</p>
-                      {!isEditing && (product.cantidad ?? 0) === 0 && (
-                        <p className="text-[11px] font-bold text-red-500 mt-0.5">Se acabó. Toca reponer.</p>
-                      )}
-                      {!isEditing && (product.cantidad ?? 0) > 0 && lowStock && (
-                        <p className="text-[11px] font-bold text-orange-400 mt-0.5">Te queda poco, ¿ya pediste más?</p>
-                      )}
                     </div>
                   </div>
 
@@ -365,7 +394,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <p className="font-bold text-[#B8860B]">${(getPrecioVenta(product) || 0).toLocaleString('es-CO')}</p>
-                        <p className={cn('text-xs font-bold', lowStock ? 'text-red-400' : 'opacity-50')}>
+                        <p className={cn('text-xs font-bold', lowStock ? 'text-[#DAA520]' : 'opacity-50')}>
                           Stock: {product.cantidad ?? 0}
                         </p>
                         {getPrecioCompra(product) > 0 && (
@@ -471,6 +500,26 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
           })
         )}
       </div>
+
+      {/* Consejos */}
+      {inventoryTips.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {inventoryTips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                isDarkMode={isDarkMode}
+                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
