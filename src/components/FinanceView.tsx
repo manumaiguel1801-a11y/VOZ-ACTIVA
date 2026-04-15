@@ -197,6 +197,26 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
         </div>
       </section>
 
+      {/* Consejos */}
+      {tips.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {tips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                isDarkMode={isDarkMode}
+                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Transaction list */}
       <section className="space-y-4">
         <div className="px-1">
@@ -266,26 +286,6 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </div>
         )}
       </section>
-
-      {/* Consejos */}
-      {tips.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 px-1">
-            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
-            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
-            {tips.map(tip => (
-              <TipCard
-                key={tip.id}
-                text={tip.text}
-                isDarkMode={isDarkMode}
-                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
-              />
-            ))}
-          </div>
-        </section>
-      )}
 
       {selectedSale && (
         <MovementDetailModal item={{ kind: 'sale', data: selectedSale }} isDarkMode={isDarkMode} onClose={() => setSelectedSale(null)} />

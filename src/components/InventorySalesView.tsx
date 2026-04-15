@@ -346,6 +346,26 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
         />
       </div>
 
+      {/* Consejos */}
+      {inventoryTips.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {inventoryTips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                isDarkMode={isDarkMode}
+                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Product list */}
       <div className="space-y-3">
         <h3 className="font-bold text-lg px-1">Productos en Stock</h3>
@@ -501,25 +521,6 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
         )}
       </div>
 
-      {/* Consejos */}
-      {inventoryTips.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 px-1">
-            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
-            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
-            {inventoryTips.map(tip => (
-              <TipCard
-                key={tip.id}
-                text={tip.text}
-                isDarkMode={isDarkMode}
-                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

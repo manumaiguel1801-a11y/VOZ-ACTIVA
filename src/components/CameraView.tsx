@@ -1269,6 +1269,25 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
         </div>
       )}
 
+      {/* Consejos */}
+      {debtTips.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
+            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {debtTips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                onDismiss={() => setDismissedDebtTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         {filteredDebts.length === 0 ? (
           <div className={cn('p-10 rounded-2xl flex flex-col items-center justify-center gap-3 text-center', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
@@ -1362,24 +1381,6 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
         )}
       </div>
 
-      {/* Consejos */}
-      {debtTips.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 px-1">
-            <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
-            <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
-            {debtTips.map(tip => (
-              <TipCard
-                key={tip.id}
-                text={tip.text}
-                onDismiss={() => setDismissedDebtTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </section>
   );
 
