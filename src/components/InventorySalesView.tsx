@@ -352,8 +352,11 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold truncate">{product.nombre}</p>
-                      {lowStock && !isEditing && (
-                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide">Stock bajo</p>
+                      {!isEditing && (product.cantidad ?? 0) === 0 && (
+                        <p className="text-[11px] font-bold text-red-500 mt-0.5">Se acabó. Toca reponer.</p>
+                      )}
+                      {!isEditing && (product.cantidad ?? 0) > 0 && lowStock && (
+                        <p className="text-[11px] font-bold text-orange-400 mt-0.5">Te queda poco, ¿ya pediste más?</p>
                       )}
                     </div>
                   </div>

@@ -466,6 +466,8 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
   // ── Debt section data ─────────────────────────────────────────────────────
 
+  const [dismissedDebtTips, setDismissedDebtTips] = useState<Set<string>>(() => new Set());
+
   const filteredDebts = debts.filter(
     (d) => d.type === debtType && (d.status ?? 'pendiente') !== 'pagada',
   );
@@ -477,6 +479,22 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       .filter((d) => d.type === 'debo' && (d.status ?? 'pendiente') !== 'pagada')
       .reduce((s, d) => s + (d.amount - (d.amountPaid ?? 0)), 0),
   }), [debts]);
+
+  const debtTips = useMemo(() => {
+    const now = Date.now();
+    const result: { id: string; text: string }[] = [];
+    debts
+      .filter(d => (d.status ?? 'pendiente') !== 'pagada')
+      .forEach(d => {
+        const days = Math.floor((now - getDebtDate(d).getTime()) / 86400000);
+        if (d.type === 'me-deben' && days > 7) {
+          result.push({ id: `tip-${d.id}`, text: `${d.name} te debe desde hace ${days} días. Puede ser buen momento para cobrar.` });
+        } else if (d.type === 'debo' && days > 15) {
+          result.push({ id: `tip-${d.id}`, text: `Llevas ${days} días debiéndole a ${d.name}. Ojo para no acumular.` });
+        }
+      });
+    return result.filter(t => !dismissedDebtTips.has(t.id));
+  }, [debts, dismissedDebtTips]);
 
   // ── Table styles ──────────────────────────────────────────────────────────
 
@@ -1106,6 +1124,18 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
   // ── Debts section (original) ──────────────────────────────────────────────
 
+  const TipCard: React.FC<{ text: string; onDismiss: () => void }> = ({ text, onDismiss }) => (
+    <div
+      className={cn('flex-shrink-0 w-72 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}
+      style={{ borderLeftColor: '#F5A623' }}
+    >
+      <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/80' : 'text-[#2e2f2d]/80')}>{text}</p>
+      <button onClick={onDismiss} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity mt-0.5">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+
   const renderDeudasSection = () => (
     <section className="space-y-6">
       <div className="flex justify-between items-end px-1">
@@ -1235,6 +1265,21 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</>
               : <><Check className="w-4 h-4" /> Guardar</>}
           </button>
+        </div>
+      )}
+
+      {debtTips.length > 0 && (
+        <div className="space-y-2">
+          <p className={cn('text-[10px] font-black uppercase tracking-widest px-1', isDarkMode ? 'text-white/30' : 'text-black/30')}>Consejos</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {debtTips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                onDismiss={() => setDismissedDebtTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
         </div>
       )}
 

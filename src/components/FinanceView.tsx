@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight, Send, MessageCircle } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, ShoppingBag, TrendingDown, ChevronRight, Send, MessageCircle, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
@@ -47,9 +47,26 @@ interface Props {
   expenses: Expense[];
 }
 
+// ─── Tip card ────────────────────────────────────────────────────────────────
+
+const TipCard: React.FC<{ text: string; onDismiss: () => void; isDarkMode: boolean }> = ({ text, onDismiss, isDarkMode }) => (
+  <div className={cn(
+    'flex-shrink-0 w-72 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4',
+    isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm',
+  )} style={{ borderLeftColor: '#F5A623' }}>
+    <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/80' : 'text-[#2e2f2d]/80')}>{text}</p>
+    <button onClick={onDismiss} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity mt-0.5">
+      <X className="w-3.5 h-3.5" />
+    </button>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [dismissedTips, setDismissedTips] = useState<Set<string>>(() => new Set());
   // Month totals
   const { monthIncome, monthExpenses } = useMemo(() => {
     const now = new Date();
@@ -88,6 +105,34 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
 
   const maxBar = Math.max(...weeklyData.map((d) => d.value), 1);
   const weekTotal = weeklyData.reduce((sum, d) => sum + d.value, 0);
+
+  const tips = useMemo(() => {
+    const result: { id: string; text: string }[] = [];
+
+    // Gastos > 70% ingresos
+    if (monthIncome > 0 && monthExpenses / monthIncome > 0.7) {
+      const pct = Math.round((monthExpenses / monthIncome) * 100);
+      result.push({ id: 'gastos-altos', text: `Por cada $100 que entran, $${pct} se van en gastos. ¿Hay algo que puedas reducir?` });
+    }
+
+    // Sin registrar en 24 horas
+    const allMs = [
+      ...sales.map(s => getSaleDate(s).getTime()),
+      ...expenses.map(e => getExpenseDate(e).getTime()),
+    ];
+    if (allMs.length > 0 && (Date.now() - Math.max(...allMs)) / 3600000 > 24) {
+      result.push({ id: 'sin-registro', text: 'No has registrado nada hoy. ¿Cómo te fue?' });
+    }
+
+    // Mejor día de la semana superado
+    const today = weeklyData[6];
+    const prevMax = Math.max(...weeklyData.slice(0, 6).map(d => d.value), 0);
+    if (today && today.value > 0 && today.value > prevMax) {
+      result.push({ id: 'mejor-dia', text: '¡Hoy fue tu mejor día de ventas! Así se hace.' });
+    }
+
+    return result.filter(t => !dismissedTips.has(t.id));
+  }, [monthIncome, monthExpenses, sales, expenses, weeklyData, dismissedTips]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -151,6 +196,23 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           </ResponsiveContainer>
         </div>
       </section>
+
+      {/* Consejos */}
+      {tips.length > 0 && (
+        <section className="space-y-2">
+          <p className={cn('text-[10px] font-black uppercase tracking-widest px-1', isDarkMode ? 'text-white/30' : 'text-black/30')}>Consejos</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+            {tips.map(tip => (
+              <TipCard
+                key={tip.id}
+                text={tip.text}
+                isDarkMode={isDarkMode}
+                onDismiss={() => setDismissedTips(prev => { const s = new Set(prev); s.add(tip.id); return s; })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Transaction list */}
       <section className="space-y-4">
