@@ -192,21 +192,19 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
 
     inventory.forEach(p => {
       const qty = p.cantidad ?? 0;
-      const genero = detectarGenero(p.nombre);
       const nombre = p.nombre;
+      const genero = detectarGenero(nombre);
 
       if (qty === 0) {
-        const texto =
-          genero === 'femenino' ? `Se te acabaron las ${nombre}. Toca reponer.` :
-          genero === 'masculino' ? `Se te acabaron los ${nombre}. Toca reponer.` :
-          `Se te acabó el ${nombre}. Toca reponer.`;
-        result.push({ id: `zero-${p.id}`, text: texto });
+        // Artículo (el/la) según última letra del nombre completo
+        const articulo = nombre.trim().slice(-1).toLowerCase() === 'a' ? 'la' : 'el';
+        result.push({ id: `zero-${p.id}`, text: `Se te acabó ${articulo} ${nombre}. Toca reponer.` });
       } else if (qty < 5) {
         const unidad = qty === 1 ? 'unidad' : 'unidades';
         const texto =
-          genero === 'femenino' ? `Te quedan pocas ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?` :
+          genero === 'femenino'  ? `Te quedan pocas ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?` :
           genero === 'masculino' ? `Te quedan pocos ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?` :
-          `Te queda poco de ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?`;
+                                   `Te queda poco ${nombre}, solo ${qty} ${unidad}. ¿Ya pediste más?`;
         result.push({ id: `low-${p.id}`, text: texto });
       }
     });

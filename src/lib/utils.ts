@@ -10,20 +10,25 @@ export const capitalizar = (str: string): string =>
   str.toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
 
 /**
- * Detecta el género gramatical de un nombre de producto en español
- * basándose en la última letra alfabética del nombre.
+ * Detecta el género/número gramatical de un nombre de producto en español
+ * analizando la terminación de la ÚLTIMA palabra del nombre.
  *
- * - Termina en "a"  → 'femenino'  (Manzanas, Gaseosas, Papas)
- * - Termina en "o"  → 'masculino' (Tintos, Jugos, Huevos)
- * - Otro            → 'neutro'    (Arroz, Pan, Leche)
+ * Reglas (por orden de prioridad):
+ *   "as"       → 'femenino'  — Manzanas, Gaseosas, Papas
+ *   "os" | "es"→ 'masculino' — Tintos, Jugos, Limones
+ *   otro       → 'neutro'    — Arroz, Pan, Jugo de Naranja, Leche
+ *
+ * Uso en consejos de stock bajo:
+ *   femenino  → "Te quedan pocas Manzanas, solo 2 unidades."
+ *   masculino → "Te quedan pocos Tintos, solo 3 unidades."
+ *   neutro    → "Te queda poco Arroz, solo 1 unidad."
  */
 export type Genero = 'femenino' | 'masculino' | 'neutro';
 
 export function detectarGenero(nombre: string): Genero {
-  // Quita caracteres no alfabéticos del final (espacios, números, signos)
-  const clean = nombre.trim().toLowerCase().replace(/[^a-záéíóúüñ]+$/i, '');
-  const lastChar = clean.slice(-1);
-  if (lastChar === 'a') return 'femenino';
-  if (lastChar === 'o') return 'masculino';
+  const words = nombre.trim().split(/\s+/);
+  const lastWord = words[words.length - 1].toLowerCase();
+  if (lastWord.endsWith('as')) return 'femenino';
+  if (lastWord.endsWith('os') || lastWord.endsWith('es')) return 'masculino';
   return 'neutro';
 }
