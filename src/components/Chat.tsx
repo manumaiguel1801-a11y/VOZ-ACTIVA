@@ -170,7 +170,12 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
       source: 'chat',
     });
   } else if (data.type === 'gasto') {
-    await addDoc(collection(db, 'users', userId, 'expenses'), base);
+    const qty = data.quantity ?? 1;
+    const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
+    await addDoc(collection(db, 'users', userId, 'expenses'), {
+      ...base,
+      items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
+    });
   } else if (data.type === 'deuda-me-deben') {
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
@@ -311,6 +316,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               amount: total,
               createdAt: serverTimestamp(),
               source: 'chat',
+              items: [{ product: concept, quantity, unitPrice: price, subtotal: total }],
             });
             addBotMsg(
               `¡Listo! Compraste ${quantity} ${concept} a $${price.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
@@ -360,6 +366,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               amount: total,
               createdAt: serverTimestamp(),
               source: 'chat',
+              items: [{ product: concept, quantity, unitPrice: precioCompra, subtotal: total }],
             });
             addBotMsg(
               `Entendido 👍 Registré $${total.toLocaleString('es-CO')} de gasto por ${quantity} ${concept}. No se tocó el inventario.`,
@@ -398,6 +405,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               amount: total,
               createdAt: serverTimestamp(),
               source: 'chat',
+              items: [{ product: concept, quantity, unitPrice: precioCompra, subtotal: total }],
             });
             addBotMsg(
               `¡Listo! ${quantity} ${concept} guardados — compra a $${precioCompra.toLocaleString('es-CO')}, venta a $${price.toLocaleString('es-CO')}. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
