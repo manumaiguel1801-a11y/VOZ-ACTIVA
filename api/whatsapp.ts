@@ -22,13 +22,15 @@ const MAX_HISTORY = 10; // max entries (5 turns) to store per user
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // GET — Meta webhook verification
   if (req.method === 'GET') {
-    const mode      = req.query['hub.mode'];
-    const token     = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
+    const hub = req.query['hub'] as Record<string, string> | undefined;
+    const mode      = hub?.['mode'];
+    const token     = hub?.['verify_token'];
+    const challenge = hub?.['challenge'];
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       res.status(200).send(challenge);
     } else {
+      console.warn('[whatsapp] Verify failed — mode:', mode, 'token match:', token === VERIFY_TOKEN);
       res.status(403).end();
     }
     return;
