@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue, Timestamp, type DocumentReference } from 'firebase-admin/firestore';
-import { parseMovement } from './_lib/gemini.js';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { processMessage } from './_lib/processMessage.js';
 import { sendTelegram, MSG_NOT_LINKED, MSG_HELP } from './_lib/telegram-bot.js';
 
 // ─── Firebase Admin init ──────────────────────────────────────────────────────
@@ -11,7 +11,6 @@ function getAdminApp() {
   if (raw) {
     return initializeApp({ credential: cert(JSON.parse(raw)) });
   }
-  // Fallback: GOOGLE_APPLICATION_CREDENTIALS env var (for local dev)
   return initializeApp();
 }
 
@@ -66,7 +65,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    await processMessage(snap.docs[0].id, chatId, text);
+    const send = (t: string) => sendTelegram(chatId, t);
+    await processMessage(snap.docs[0].id, text, 'telegram', send, db);
   } catch (err) {
     console.error('[telegram] Error:', err);
     try { await sendTelegram(chatId, '⚠️ Hubo un error. Intenta de nuevo.'); } catch (_) { /* ignore */ }
@@ -106,112 +106,4 @@ async function handleLinking(chatId: number, code: string) {
   await sendTelegram(chatId,
     `✅ <b>¡Listo, ${firstName}!</b> Tu cuenta está vinculada.\n\n${MSG_HELP}`
   );
-}
-
-// ─── Message processing ───────────────────────────────────────────────────────
-async function processMessage(uid: string, chatId: number, text: string) {
-  const result = await parseMovement(text);
-
-  if (!result.data) {
-    await sendTelegram(chatId, result.message || MSG_HELP);
-    return;
-  }
-
-  const { type, amount, concept, quantity, unitPrice, debtorName, isPartial, payments } = result.data;
-  const now = FieldValue.serverTimestamp();
-  const userRef = db.collection('users').doc(uid);
-
-  if (payments && payments.length > 0) {
-    for (const p of payments) {
-      await handleDebtPayment(userRef, uid, p.debtorName, p.amount, p.isPartial, type as 'pago-deuda-debo' | 'cobro-deuda-me-deben', now);
-    }
-    await sendTelegram(chatId, result.message);
-    return;
-  }
-
-  switch (type) {
-    case 'venta': {
-      const qty = quantity ?? 1;
-      const price = unitPrice ?? (qty > 1 ? Math.round(amount / qty) : amount);
-      await userRef.collection('sales').add({
-        items: [{ product: concept, quantity: qty, unitPrice: price, subtotal: amount }],
-        total: amount,
-        createdAt: now,
-        source: 'telegram',
-      });
-      break;
-    }
-    case 'compra':
-    case 'gasto':
-      await userRef.collection('expenses').add({
-        concept: type === 'compra' ? `Compra: ${concept}` : concept,
-        amount,
-        createdAt: now,
-        source: 'telegram',
-      });
-      break;
-    case 'deuda-me-deben':
-    case 'deuda-debo':
-      await userRef.collection('debts').add({
-        name: debtorName ?? concept,
-        concept,
-        amount,
-        type: type === 'deuda-me-deben' ? 'me-deben' : 'debo',
-        status: 'pendiente',
-        createdAt: now,
-        source: 'telegram',
-      });
-      break;
-    case 'pago-deuda-debo':
-    case 'cobro-deuda-me-deben':
-      if (debtorName) {
-        await handleDebtPayment(userRef, uid, debtorName, amount, isPartial ?? false, type, now);
-      } else {
-        await sendTelegram(chatId, '⚠️ ' + result.message + '\n\nPara pagos de deudas, abre la app directamente.');
-        return;
-      }
-      break;
-  }
-
-  await sendTelegram(chatId, result.message);
-}
-
-// ─── Debt payment ─────────────────────────────────────────────────────────────
-async function handleDebtPayment(
-  userRef: DocumentReference,
-  uid: string,
-  debtorName: string,
-  amount: number,
-  isPartial: boolean,
-  type: 'pago-deuda-debo' | 'cobro-deuda-me-deben',
-  now: FieldValue,
-) {
-  const debtType = type === 'pago-deuda-debo' ? 'debo' : 'me-deben';
-  const debtsSnap = await userRef.collection('debts')
-    .where('type', '==', debtType)
-    .where('status', 'in', ['pendiente', 'parcial'])
-    .get();
-
-  const nameLower = debtorName.toLowerCase();
-  const matchDoc = debtsSnap.docs.find((d) => {
-    const name = (d.data().name as string ?? '').toLowerCase();
-    return name.includes(nameLower) || nameLower.includes(name);
-  });
-
-  if (!matchDoc) {
-    console.warn(`[handleDebtPayment] No debt found for "${debtorName}" (uid: ${uid})`);
-    return;
-  }
-
-  const debtData = matchDoc.data();
-  const prevPaid = (debtData.amountPaid as number | undefined) ?? 0;
-  const effectivePay = amount > 0 ? amount : ((debtData.amount as number) - prevPaid);
-  const totalPaid = prevPaid + effectivePay;
-  const isPaidOff = !isPartial && totalPaid >= (debtData.amount as number);
-
-  await matchDoc.ref.update({
-    amountPaid: totalPaid,
-    status: isPaidOff ? 'pagada' : 'parcial',
-    ...(isPaidOff ? { paidAt: now } : {}),
-  });
 }

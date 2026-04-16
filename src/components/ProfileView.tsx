@@ -86,6 +86,9 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [waLinkCode, setWaLinkCode] = useState<string | null>(null);
+  const [waLinking, setWaLinking] = useState(false);
+  const [waCopied, setWaCopied] = useState(false);
 
   // Photo states
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
@@ -160,6 +163,30 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
     navigator.clipboard.writeText(`/vincular ${linkCode}`).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const generateWaLinkCode = async () => {
+    if (!auth.currentUser) return;
+    setWaLinking(true);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { linkCode: { code, expiresAt } });
+      setWaLinkCode(code);
+    } catch (err) {
+      console.error('Error generating WA link code:', err);
+      alert('Error al generar el código. Intenta de nuevo.');
+    } finally {
+      setWaLinking(false);
+    }
+  };
+
+  const copyWaCode = () => {
+    if (!waLinkCode) return;
+    navigator.clipboard.writeText(`VINCULAR ${waLinkCode}`).then(() => {
+      setWaCopied(true);
+      setTimeout(() => setWaCopied(false), 2000);
     });
   };
 
@@ -305,6 +332,79 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
           <div className={cn('px-5 py-3 flex items-center gap-2', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f8fd]')}>
             <div className="w-1.5 h-1.5 rounded-full bg-[#229ED9]" />
             <p className={cn('text-[10px] font-bold', isDarkMode ? 'text-white/40' : 'text-[#229ED9]/70')}>
+              Gratis · Sin instalar nada extra · Funciona en Colombia
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Linking */}
+      {profile.whatsappPhone ? (
+        <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', isDarkMode ? 'bg-green-500/10' : 'bg-green-50')}>
+          <div className="w-8 h-8 rounded-xl bg-[#25D366] flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-green-600">WhatsApp vinculado</p>
+            <p className={cn('text-[10px] font-medium', isDarkMode ? 'text-white/40' : 'text-black/40')}>
+              Ya puedes registrar movimientos desde WhatsApp
+            </p>
+          </div>
+          <MessageSquare className="w-4 h-4 text-[#25D366] flex-shrink-0" />
+        </div>
+      ) : waLinkCode ? (
+        <div className={cn('rounded-2xl p-5 border-2 border-[#25D366]/30', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-[#25D366] flex items-center justify-center flex-shrink-0">
+              <MessageSquare className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-black text-sm">¡Casi listo!</p>
+              <p className={cn('text-[11px] font-medium', isDarkMode ? 'text-white/50' : 'text-black/50')}>
+                Envía este mensaje a <b>Voz-Activa</b> en WhatsApp
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={copyWaCode}
+            className={cn(
+              'w-full flex items-center justify-between px-4 py-3 rounded-xl font-mono text-sm font-bold border-2 transition-all active:scale-95 mb-2',
+              isDarkMode ? 'bg-[#0D0D0D] border-[#25D366]/40 text-[#25D366]' : 'bg-[#f0fdf4] border-[#25D366]/30 text-[#25D366]',
+            )}
+          >
+            <span>VINCULAR {waLinkCode}</span>
+            {waCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 opacity-60" />}
+          </button>
+          <p className={cn('text-[10px] font-medium text-center', isDarkMode ? 'text-white/30' : 'text-black/30')}>
+            Código válido 10 minutos · Toca para copiar
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden shadow-lg">
+          <div className="bg-gradient-to-br from-[#25D366] to-[#128C7E] p-5">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-7 h-7 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-white text-base leading-tight">Registra desde WhatsApp</p>
+                <p className="text-white/80 text-xs font-medium mt-1 leading-snug">
+                  Escribe <i>"vendí 3 almuerzos a 12 mil"</i> en WhatsApp y lo registramos automáticamente.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={generateWaLinkCode}
+              disabled={waLinking}
+              className="mt-4 w-full h-11 bg-white text-[#128C7E] rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 shadow-md"
+            >
+              <MessageSquare className="w-4 h-4" />
+              {waLinking ? 'Generando código...' : 'Vincular con WhatsApp'}
+            </button>
+          </div>
+          <div className={cn('px-5 py-3 flex items-center gap-2', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f0fdf4]')}>
+            <div className="w-1.5 h-1.5 rounded-full bg-[#25D366]" />
+            <p className={cn('text-[10px] font-bold', isDarkMode ? 'text-white/40' : 'text-[#25D366]/70')}>
               Gratis · Sin instalar nada extra · Funciona en Colombia
             </p>
           </div>
