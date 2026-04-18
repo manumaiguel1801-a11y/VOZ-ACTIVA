@@ -22,10 +22,10 @@ const MAX_HISTORY = 10; // max entries (5 turns) to store per user
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // GET — Meta webhook verification
   if (req.method === 'GET') {
-    const hub = req.query['hub'] as Record<string, string> | undefined;
-    const mode      = hub?.['mode'];
-    const token     = hub?.['verify_token'];
-    const challenge = hub?.['challenge'];
+    // Meta sends these as flat dot-notated query params: hub.mode, hub.verify_token, hub.challenge
+    const mode      = req.query['hub.mode'] as string | undefined;
+    const token     = req.query['hub.verify_token'] as string | undefined;
+    const challenge = req.query['hub.challenge'] as string | undefined;
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       res.status(200).send(challenge);
