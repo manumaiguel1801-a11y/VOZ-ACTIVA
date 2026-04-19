@@ -32,16 +32,18 @@ function getExpenseDate(e: Expense): Date {
 
 function SourceBadge({ source }: { source?: string }) {
   if (!source || source === 'manual') return null;
-  const config = {
+  const config: Record<string, { label: string; color: string; Icon: React.ElementType | null }> = {
     telegram: { label: 'Telegram', color: '#229ED9', Icon: Send },
     chat:     { label: 'Chat IA',  color: '#8B5CF6', Icon: MessageCircle },
     camara:   { label: 'Cámara',   color: '#F59E0B', Icon: null },
-  }[source];
-  if (!config) return null;
+    whatsapp: { label: 'WhatsApp', color: '#25D366', Icon: MessageCircle },
+  };
+  const c = config[source];
+  if (!c) return null;
   return (
-    <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wide" style={{ color: config.color }}>
-      {config.Icon && <config.Icon className="w-2.5 h-2.5" />}
-      {config.label}
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wide" style={{ color: c.color }}>
+      {c.Icon && <c.Icon className="w-2.5 h-2.5" />}
+      {c.label}
     </span>
   );
 }

@@ -1,7 +1,9 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import { doc as fsDoc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { Sale, Expense, Debt, UserProfile } from '../types';
-import { calculateScore, getScoreLabel, ScoreBreakdown } from './scoringService';
+import { calculateScore, getScoreLabel, ScoreBreakdown, getBusinessAgeDays, getMonthlyProjection } from './scoringService';
 
 // ─── Paleta ──────────────────────────────────────────���─────────────────────────
 const C = {
@@ -53,7 +55,7 @@ function addMonths(d: Date, m: number): Date {
   return r;
 }
 
-function verificationCode(idNumber: string): string {
+function generateVerifCode(idNumber: string): string {
   const now = new Date();
   const yr = now.getFullYear();
   const mo = String(now.getMonth() + 1).padStart(2, '0');
@@ -146,13 +148,15 @@ function scoreBar(doc: jsPDF, score: number, x: number, y: number, w: number) {
   doc.text('Excelente', x + w * 0.875, y + 9, { align: 'center' });
 }
 
-// ─── Generador principal ──────────────────────────────���───────────────────────
+// ─── Generador principal ──────────────────────────────────────────────────────
 export async function generatePassportPDF(
   profile: UserProfile | null,
   sales: Sale[],
   expenses: Expense[],
   debts: Debt[],
-): Promise<void> {
+  userId?: string,
+  baseUrl?: string,
+): Promise<{ blob: Blob; filename: string }> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = 210;
   const M = 14;           // margen
@@ -169,7 +173,37 @@ export async function generatePassportPDF(
   const nombre   = profile ? `${profile.firstName} ${profile.lastName}` : 'Usuario Voz-Activa';
   const cedula   = profile?.idNumber ?? '—';
   const telefono = profile?.phone    ?? '—';
-  const verifCode = verificationCode(cedula);
+
+  // Código de verificación persistente (reusar si no expiró)
+  let verifCode: string;
+  const existing = profile?.verificationCode;
+  if (existing?.code && existing?.expiresAt) {
+    const expiry = existing.expiresAt.toDate ? existing.expiresAt.toDate() : new Date(existing.expiresAt);
+    verifCode = expiry > now ? existing.code : generateVerifCode(cedula);
+  } else {
+    verifCode = generateVerifCode(cedula);
+  }
+
+  // Si es código nuevo, persistirlo en Firestore y publicar en passportVerifications
+  if (verifCode !== existing?.code && userId) {
+    const expiresAt = addMonths(now, 3);
+    const expiresTs = Timestamp.fromDate(expiresAt);
+    await Promise.all([
+      updateDoc(fsDoc(db, 'users', userId), {
+        verificationCode: { code: verifCode, expiresAt: expiresTs },
+      }),
+      setDoc(fsDoc(db, 'passportVerifications', verifCode), {
+        name: nombre,
+        score: bd.scoreFinal,
+        scoreLabel: getScoreLabel(bd.scoreFinal),
+        businessAgeDays: getBusinessAgeDays(sales, expenses, debts),
+        monthlyProjection: getMonthlyProjection(sales),
+        generatedAt: Timestamp.fromDate(now),
+        expiresAt: expiresTs,
+      }),
+    ]);
+  }
+
   const validUntil = formatDate(addMonths(now, 3));
   const sc = scoreColor(bd.scoreFinal);
 
@@ -373,16 +407,10 @@ export async function generatePassportPDF(
   sectionTitle(doc, 'Certificación', M, y, CW);
   y += 7;
 
-  // Generar QR
-  const qrContent = [
-    'VOZ-ACTIVA | PASAPORTE FINANCIERO',
-    `Titular: ${nombre}`,
-    `Cédula: ${cedula}`,
-    `Score: ${bd.scoreFinal} / 850`,
-    `Categoría: ${getScoreLabel(bd.scoreFinal)}`,
-    `Código: ${verifCode}`,
-    `Emisión: ${formatDate(now)}`,
-  ].join('\n');
+  // Generar QR — URL verificable si hay baseUrl, texto plano como fallback
+  const qrContent = baseUrl
+    ? `${baseUrl}?verificar=${verifCode}`
+    : `VOZ-ACTIVA | ${verifCode} | Score: ${bd.scoreFinal} | ${getScoreLabel(bd.scoreFinal)}`;
 
   let qrDataUrl = '';
   try {
@@ -481,8 +509,8 @@ export async function generatePassportPDF(
   doc.setFontSize(6.5);
   doc.text(`N° ${verifCode}`, W - M, 292.5, { align: 'right' });
 
-  // ── Guardar ────────────────────────────────────────────────────────────────
   const safeCedula = cedula.replace(/\D/g, '');
   const dateStr = now.toISOString().slice(0, 10);
-  doc.save(`pasaporte-vozactiva-${safeCedula}-${dateStr}.pdf`);
+  const filename = `pasaporte-vozactiva-${safeCedula}-${dateStr}.pdf`;
+  return { blob: doc.output('blob') as Blob, filename };
 }

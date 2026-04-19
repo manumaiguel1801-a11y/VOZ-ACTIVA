@@ -17,6 +17,7 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  regularUnitPrice?: number; // precio de inventario cuando se vendió con descuento
 }
 
 export interface Sale {
@@ -99,6 +100,13 @@ export function getMargen(p: InventoryProduct): number | null {
   return Math.round(((venta - compra) / compra) * 100);
 }
 
+export interface ScoreHistoryEntry {
+  id?: string;
+  score: number;
+  weekKey: string;
+  recordedAt: any;
+}
+
 export interface UserProfile {
   firstName: string;
   lastName: string;
@@ -111,4 +119,6 @@ export interface UserProfile {
   telegramChatId?: string;
   whatsappPhone?: string;
   linkCode?: { code: string; expiresAt: any };
+  lastScoreCategory?: string;
+  verificationCode?: { code: string; expiresAt: any };
 }

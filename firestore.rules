@@ -23,6 +23,15 @@ service cloud.firestore {
       match /fiados/{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      match /scoreHistory/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    match /passportVerifications/{code} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

@@ -52,23 +52,51 @@ Navigation is rendered by `<Layout>` as a fixed bottom nav bar. The floating `<C
 
 ### Key Files
 
-- `src/types.ts` — shared types: `Tab`, `Transaction`, `UserProfile`
+- `src/types.ts` — shared types: `Tab`, `Sale`, `Expense`, `Debt`, `InventoryProduct`, `UserProfile`
 - `src/firebase.ts` — initializes Firebase app, exports `auth` and `db`
-- `src/services/gemini.ts` — wraps `@google/genai` SDK; sends chat history + system prompt to `gemini-3-flash-preview`; expects JSON responses with optional `data` field (type, amount, concept)
+- `src/services/gemini.ts` — client-side Gemini wrapper for the in-app chat (different from the API-side version)
 - `src/lib/utils.ts` — `cn()` helper (clsx + tailwind-merge)
 
 ### Firestore Data Model
 
-Single collection `users/{userId}` (document ID = Firebase Auth UID). Fields: `firstName`, `lastName`, `idNumber`, `phone`, `birthDate`, `createdAt` (required), `email` (optional). Users can read/write only their own document; delete is disabled. Rules are in `firestore.rules`.
+Root document `users/{userId}` (ID = Firebase Auth UID) with fields: `firstName`, `lastName`, `idNumber`, `phone`, `birthDate`, `createdAt`, `email?`, `photoURL?`, `telegramChatId?`, `whatsappPhone?`, `linkCode?`, `verificationCode?`.
+
+Subcollections under each user:
+- `sales/` — `{ items: SaleItem[], total, createdAt, source }`
+- `expenses/` — `{ concept, amount, items?, createdAt, source }`
+- `debts/` — `{ name, concept, amount, type ('me-deben'|'debo'), status, amountPaid?, createdAt }`
+- `inventario/` — `{ nombre, cantidad, precioCompra, precioVenta, createdAt, updatedAt? }`
+- `scoreHistory/` — `{ score, weekKey, recordedAt }`
+
+Messaging state (also on the user doc): `whatsappHistory`, `whatsappPendingState`, `telegramHistory`, `telegramPendingState`.
+
+Rules in `firestore.rules` — users read/write only their own subtree. `passportVerifications/{code}` is publicly readable.
+
+### Serverless API (Vercel)
+
+`api/` contains Vercel serverless functions:
+- `api/whatsapp.ts` — WhatsApp Business webhook. Handles account linking via `vincular <code>`, then routes to `processMessage` or the multi-turn `handlePendingState` state machine.
+- `api/telegram.ts` — Telegram Bot webhook (same architecture).
+- `api/_lib/gemini.ts` — **Server-side** Gemini client. Uses `gemini-2.5-flash` (fallback: `gemini-2.0-flash`) with structured JSON output enforced via `responseSchema`. This is separate from `src/services/gemini.ts`.
+- `api/_lib/processMessage.ts` — Shared business logic for both bots: calls Gemini, maps parsed movement types to Firestore writes, handles inventory lookups and debt payments. Returns a `PendingState` when multi-turn input is needed (e.g., price for a new product).
+- `api/_lib/whatsapp-bot.ts` / `api/_lib/telegram-bot.ts` — Thin send helpers.
+
+Required env vars for the API (Vercel dashboard or `.env.local`):
+- `GEMINI_API_KEY`
+- `FIREBASE_SERVICE_ACCOUNT` (JSON string of Firebase Admin service account)
+- `FIRESTORE_DATABASE_ID`
+- `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+- `TELEGRAM_BOT_TOKEN`
 
 ### Gemini AI Assistant
 
-The chat assistant (`src/services/gemini.ts`) uses a system prompt that instructs the model to:
-1. Extract financial movements (ventas, gastos, deudas) from natural language
-2. Respond in JSON: `{ message: string, data?: { type, amount, concept } }`
-3. Adapt its tone to match the user's register (professional → costeño Colombian slang)
+Two separate Gemini integrations with different purposes:
 
-The Vite config injects `GEMINI_API_KEY` into `process.env` at build time via `define`.
+**Server-side** (`api/_lib/gemini.ts`): Used by Telegram/WhatsApp bots. Enforces structured JSON via `responseSchema`. Returns `{ message, data?, movements? }` where `data` is the primary `ParsedMovement` and `movements` contains secondary ones (multi-action messages). Model: `gemini-2.5-flash`.
+
+**Client-side** (`src/services/gemini.ts`): Used by the in-app chat bubble. Sends conversation history and a system prompt, expects `{ message, data?: { type, amount, concept } }`. Model: `gemini-2.0-flash-exp` (injected via Vite `define` at build time).
+
+Movement types parsed by Gemini: `venta`, `gasto`, `compra`, `deuda-me-deben`, `deuda-debo`, `pago-deuda-debo`, `cobro-deuda-me-deben`.
 
 ### Styling
 

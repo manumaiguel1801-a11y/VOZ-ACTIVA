@@ -95,8 +95,9 @@ REGLAS PARA PAGOS DE DEUDAS:
 REGLAS DE EXTRACCIÓN
 ════════════════════════════════════════
 - Montos: "20 barras"="20 lucas"="20 mil"="20k" = 20000.
-- Para ventas con cantidad y precio: "concept" = SOLO nombre del producto SIN cantidad. "quantity"=unidades. "unitPrice"=precio por unidad. "amount"=quantity×unitPrice.
-- Si solo hay total sin desglose: quantity=1, unitPrice=amount.
+- Para CUALQUIER movimiento (venta, gasto, compra): "concept" = SOLO nombre del producto/concepto SIN cantidad. "quantity"=unidades mencionadas. "unitPrice"=precio por unidad mencionado. "amount"=quantity×unitPrice.
+- Si el usuario menciona cantidad pero no precio unitario: calcula unitPrice=amount/quantity. Si no menciona cantidad: quantity=1, unitPrice=amount.
+- Ejemplos: "compré 3 bolsos en 45k" → quantity=3, unitPrice=15000, amount=45000. "gasté 2 resmas a 12k" → quantity=2, unitPrice=12000, amount=24000. "pagué 50k de arriendo" → quantity=1, unitPrice=50000, amount=50000.
 - Para deudas: extrae "debtorName" si se menciona.
 - Sin datos financieros: omite el campo "data".
 - Saludo o pregunta general: responde normalmente sin "data".

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ChevronLeft,
   MessageCircle,
+  MessageSquare,
   Camera,
   TrendingUp,
   Package,
@@ -54,8 +55,26 @@ export const OnboardingManual = ({ isOpen, onClose, isDarkMode }: OnboardingProp
       )
     },
     {
+      title: "Registra desde WhatsApp",
+      description: "¿Sin tiempo de abrir la app? Escríbele al bot de WhatsApp y registramos todo al instante. Ve a tu Perfil para vincularlo.",
+      icon: <MessageSquare className="w-12 h-12" />,
+      color: "from-[#25D366] to-[#128C7E]",
+      example: (
+        <div className="mt-4 space-y-2 text-left">
+          <div className="bg-[#25D366]/15 border border-[#25D366]/20 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-medium inline-block max-w-[90%]">
+            "vendí 5 jugos a 2 mil"
+          </div>
+          <div className="flex justify-end">
+            <div className="bg-[#25D366] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm font-bold text-white max-w-[80%]">
+              ✅ 5 jugos a $2.000 — Total $10.000 registrado. 📦 Stock: 45 uds.
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
       title: "Registra desde Telegram",
-      description: "¿Sin tiempo de abrir la app? Escríbele al bot de Telegram y registramos todo automáticamente. Vincúlalo desde tu Perfil.",
+      description: "También puedes usar Telegram para registrar ventas y gastos sin abrir la app. Vincúlalo desde tu Perfil igual que WhatsApp.",
       icon: <Send className="w-12 h-12" />,
       color: "from-[#229ED9] to-[#1a7fb5]",
       example: (

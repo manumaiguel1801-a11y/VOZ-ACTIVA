@@ -294,6 +294,30 @@ export function getMonthlyProjection(sales: Sale[]): number {
   return Math.round(total / 3);
 }
 
+// ─── Tendencia del score (últimos 30 días vs antes) ──────────────────────────
+export function calculateScoreTrend(
+  sales: Sale[],
+  expenses: Expense[],
+  debts: Debt[],
+): { delta: number; trend: 'up' | 'down' | 'stable' } {
+  const thirtyDaysAgo = Date.now() - 30 * 86400000;
+
+  const salesThen     = sales.filter(s => { const d = toDate(s.createdAt); return d && d.getTime() < thirtyDaysAgo; });
+  const expensesThen  = expenses.filter(e => { const d = toDate(e.createdAt); return d && d.getTime() < thirtyDaysAgo; });
+  const debtsThen     = debts.filter(d => { const dt = toDate(d.createdAt); return dt && dt.getTime() < thirtyDaysAgo; });
+
+  const scoreThen = calculateScore(salesThen, expensesThen, debtsThen);
+  const scoreNow  = calculateScore(sales, expenses, debts);
+
+  if (!scoreThen.hasEnoughData) return { delta: 0, trend: 'stable' };
+
+  const delta = scoreNow.scoreFinal - scoreThen.scoreFinal;
+  return {
+    delta,
+    trend: Math.abs(delta) < 5 ? 'stable' : delta > 0 ? 'up' : 'down',
+  };
+}
+
 // ─── Siguiente nivel ──────────────────────────────────────────────────────────
 export function getNextLevel(score: number): { label: string; target: number; tips: string[] } | null {
   if (score < 500) return {

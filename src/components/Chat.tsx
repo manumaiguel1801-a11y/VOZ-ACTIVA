@@ -49,8 +49,18 @@ interface DebtPaymentResult {
   paymentType?: 'pago-deuda-debo' | 'cobro-deuda-me-deben';
 }
 
+// State for multi-turn debt flow
+type PendingDebtStep = 'asking-nueva-deuda' | 'asking-confirmar-pago';
+interface PendingDebt {
+  step: PendingDebtStep;
+  debtorName: string;
+  amount: number;
+  debtType: 'pago-deuda-debo' | 'cobro-deuda-me-deben';
+  activeDebt?: Debt;
+}
+
 // State for multi-turn new-product flow
-type PendingProductStep = 'asking-precio-compra' | 'asking-precio-venta' | 'asking-stock';
+type PendingProductStep = 'asking-precio-compra' | 'asking-si-vende' | 'asking-precio-venta' | 'asking-stock';
 interface PendingProduct {
   concept: string;
   quantity: number;
@@ -95,6 +105,16 @@ function findDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): D
   return debts.find(d =>
     d.type === debtType &&
     (d.status ?? 'pendiente') !== 'pagada' &&
+    (normalizeStr(d.name).includes(n) || n.includes(normalizeStr(d.name)))
+  ) ?? null;
+}
+
+function findPaidDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): Debt | null {
+  const n = normalizeStr(name);
+  if (!n) return null;
+  return debts.find(d =>
+    d.type === debtType &&
+    d.status === 'pagada' &&
     (normalizeStr(d.name).includes(n) || n.includes(normalizeStr(d.name)))
   ) ?? null;
 }
@@ -160,9 +180,15 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
   }
   const concept = capitalizar(data.concept);
   const base = { concept, amount: data.amount, createdAt: serverTimestamp(), source: 'chat' };
+
+  const resolveUnitPrice = (qty: number) =>
+    esMontoValido(data.unitPrice) && data.unitPrice > 0
+      ? data.unitPrice
+      : qty > 1 ? Math.round(data.amount / qty) : data.amount;
+
   if (data.type === 'venta') {
     const qty = data.quantity ?? 1;
-    const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
+    const unitPrice = resolveUnitPrice(qty);
     await addDoc(collection(db, 'users', userId, 'sales'), {
       items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
       total: data.amount,
@@ -171,22 +197,44 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
     });
   } else if (data.type === 'gasto') {
     const qty = data.quantity ?? 1;
-    const unitPrice = esMontoValido(data.unitPrice) ? data.unitPrice : data.amount;
+    const unitPrice = resolveUnitPrice(qty);
     await addDoc(collection(db, 'users', userId, 'expenses'), {
       ...base,
       items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
     });
+  } else if (data.type === 'compra') {
+    const qty = data.quantity ?? 1;
+    const unitPrice = resolveUnitPrice(qty);
+    await addDoc(collection(db, 'users', userId, 'expenses'), {
+      ...base,
+      concept: `Compra: ${concept}`,
+      items: [{ product: concept, quantity: qty, unitPrice, subtotal: data.amount }],
+    });
   } else if (data.type === 'deuda-me-deben') {
+    const name = capitalizar(data.debtorName || data.concept);
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: capitalizar(data.debtorName || data.concept),
+      name,
       type: 'me-deben',
     });
+    await addDoc(collection(db, 'users', userId, 'expenses'), {
+      concept: `Préstamo a ${name}`,
+      amount: data.amount,
+      createdAt: serverTimestamp(),
+      source: 'chat',
+    });
   } else if (data.type === 'deuda-debo') {
+    const name = capitalizar(data.debtorName || data.concept);
     await addDoc(collection(db, 'users', userId, 'debts'), {
       ...base,
-      name: capitalizar(data.debtorName || data.concept),
+      name,
       type: 'debo',
+    });
+    await addDoc(collection(db, 'users', userId, 'sales'), {
+      items: [{ product: `Préstamo de ${name}`, quantity: 1, unitPrice: data.amount, subtotal: data.amount }],
+      total: data.amount,
+      createdAt: serverTimestamp(),
+      source: 'chat',
     });
   }
 }
@@ -211,6 +259,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<PendingProduct | null>(null);
+  const [pendingDebt, setPendingDebt] = useState<PendingDebt | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Voice input state ──────────────────────────────────────────────
@@ -290,6 +339,102 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
     setMessages(prev => [...prev, { role: 'user', text: userInput, timestamp: new Date() }]);
     setInput('');
 
+    // ── Pending debt flow (multi-turn, no Gemini needed) ──────────────────
+    if (pendingDebt) {
+      const lower = userInput.toLowerCase().trim();
+      const isYes = /^(si\b|sí\b|yes\b|claro|dale|obvio|simon\b|simón\b|aja\b|ajá\b|ok\b|okey|sip\b|seguro)/i.test(lower);
+      const isNo = /^(no\b|nel\b|nope|negativo)/i.test(lower);
+      const isCancel = /^(cancelar|cancel|salir|olvida|no importa)$/i.test(lower);
+
+      if (isCancel) {
+        setPendingDebt(null);
+        addBotMsg('Ok, cancelado.');
+        return;
+      }
+
+      if (pendingDebt.step === 'asking-nueva-deuda') {
+        const { debtorName, amount, debtType } = pendingDebt;
+        const name = capitalizar(debtorName);
+        const fireDebtType = debtType === 'cobro-deuda-me-deben' ? 'me-deben' : 'debo';
+
+        if (isYes && amount > 0) {
+          setIsLoading(true);
+          try {
+            await addDoc(collection(db, 'users', userId, 'debts'), {
+              name, concept: `Nueva deuda de ${name}`, amount,
+              type: fireDebtType, status: 'pagada', amountPaid: amount,
+              paidAt: serverTimestamp(), createdAt: serverTimestamp(), source: 'chat',
+            });
+            if (debtType === 'cobro-deuda-me-deben') {
+              await addDoc(collection(db, 'users', userId, 'sales'), {
+                items: [{ product: `Cobro deuda: ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }],
+                total: amount, createdAt: serverTimestamp(), source: 'chat',
+              });
+            } else {
+              await addDoc(collection(db, 'users', userId, 'expenses'), {
+                concept: `Pago deuda: ${name}`, amount, createdAt: serverTimestamp(), source: 'chat',
+              });
+            }
+            addBotMsg(`✅ Registré nueva deuda de ${name} por $${amount.toLocaleString('es-CO')} y su pago. ¡Todo cuadrado!`, { saved: true });
+          } catch (e) {
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+          }
+          setPendingDebt(null);
+          return;
+        }
+
+        if (isNo) {
+          addBotMsg('No hay problema, eso ya estaba registrado. ✅');
+          setPendingDebt(null);
+          return;
+        }
+
+        addBotMsg(`No entendí. ¿Registrar nueva deuda de ${capitalizar(debtorName)}? Responde sí o no.`);
+        return;
+      }
+
+      if (pendingDebt.step === 'asking-confirmar-pago') {
+        const { debtorName, amount, debtType, activeDebt } = pendingDebt;
+        const name = capitalizar(debtorName);
+
+        if (isYes && activeDebt) {
+          setIsLoading(true);
+          try {
+            const result = await applyDebtPayment(userId, activeDebt, amount, false);
+            if (debtType === 'cobro-deuda-me-deben') {
+              await addDoc(collection(db, 'users', userId, 'sales'), {
+                items: [{ product: `Cobro deuda: ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }],
+                total: amount, createdAt: serverTimestamp(), source: 'chat',
+              });
+              addBotMsg(`✅ ${name} te pagó $${amount.toLocaleString('es-CO')}. ¡Deuda saldada!`, { saved: true });
+            } else {
+              await addDoc(collection(db, 'users', userId, 'expenses'), {
+                concept: `Pago deuda: ${name}`, amount, createdAt: serverTimestamp(), source: 'chat',
+              });
+              addBotMsg(`✅ Pagaste $${amount.toLocaleString('es-CO')} a ${name}. ¡Deuda saldada!`, { saved: true });
+            }
+          } catch (e) {
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+          }
+          setPendingDebt(null);
+          return;
+        }
+
+        if (isNo) {
+          addBotMsg('Ok, cancelado. Dime el monto correcto cuando quieras.');
+          setPendingDebt(null);
+          return;
+        }
+
+        addBotMsg(`¿Registrar el pago de $${amount.toLocaleString('es-CO')} de ${capitalizar(debtorName)}? Responde sí o no.`);
+        return;
+      }
+    }
+
     // ── Pending new-product flow (multi-turn, no Gemini needed) ────────────
     if (pendingProduct) {
       // Step: asking for precioCompra
@@ -330,14 +475,62 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             setPendingProduct(null);
           }
         } else if (pendingProduct.isCompra) {
-          // compra de producto NUEVO — pedir precioVenta después
-          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-precio-venta' });
-          addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Y a qué precio lo vendes tú?`);
+          // compra de producto NUEVO — preguntar si lo va a vender
+          setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-si-vende' });
+          addBotMsg(`Listo, costo de $${price.toLocaleString('es-CO')} anotado. ¿Los vas a vender?`);
         } else {
           // venta de producto nuevo — ya tenemos precioVenta, ahora ir a stock
           setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-stock' });
           addBotMsg(`$${price.toLocaleString('es-CO')} de costo anotado. ¿Cuántas unidades tienes en total ahora?`);
         }
+        return;
+      }
+
+      // Step: asking si va a vender (producto nuevo en compra)
+      if (pendingProduct.step === 'asking-si-vende') {
+        const lowerInput = userInput.toLowerCase().trim();
+        const isYes = /^(si\b|sí\b|yes\b|claro|dale|obvio|simon\b|simón\b|aja\b|ajá\b|ok\b|okey|sip\b|seguro)/i.test(lowerInput);
+        const isNo = /^(no\b|nel\b|nope|negativo|pa mi\b|para mi\b|uso personal|consumo|no lo vendo|no vendo|mi familia)/i.test(lowerInput);
+        const isCancel = /^(cancelar|cancel|salir|olvida|no importa)$/i.test(lowerInput);
+
+        if (isCancel) {
+          setPendingProduct(null);
+          addBotMsg('Ok, cancelado.');
+          return;
+        }
+
+        if (isNo) {
+          const { concept, quantity, precioCompra = 0 } = pendingProduct;
+          const total = quantity * precioCompra;
+          setIsLoading(true);
+          try {
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${concept}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+              source: 'chat',
+              items: [{ product: concept, quantity, unitPrice: precioCompra, subtotal: total }],
+            });
+            addBotMsg(
+              `Entendido 👍 Registré $${total.toLocaleString('es-CO')} de gasto por ${quantity} ${concept}. No se tocó el inventario.`,
+              { saved: true, data: { type: 'gasto', amount: total, concept } }
+            );
+          } catch (e) {
+            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+          } finally {
+            setIsLoading(false);
+            setPendingProduct(null);
+          }
+          return;
+        }
+
+        if (isYes) {
+          setPendingProduct({ ...pendingProduct, step: 'asking-precio-venta' });
+          addBotMsg(`¿A qué precio vendes ${pendingProduct.concept}?`);
+          return;
+        }
+
+        addBotMsg(`No entendí. ¿Vas a vender *${pendingProduct.concept}*? Responde sí o no.`);
         return;
       }
 
@@ -505,35 +698,78 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
         const rawPayments = response.data.payments?.length
           ? response.data.payments
           : [{ debtorName: response.data.debtorName ?? response.data.concept ?? '', amount: response.data.amount, isPartial: response.data.isPartial ?? false }];
+        const isSingle = rawPayments.length === 1;
 
         const debtResults: DebtPaymentResult[] = [];
         for (const p of rawPayments) {
+          // Guard: negative amount
+          if (p.amount < 0) {
+            debtResults.push({ found: false, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+            continue;
+          }
+
           const matched = findDebt(debts, p.debtorName, debtType);
-          if (matched) {
+
+          if (!matched) {
+            // Check if debt was already paid
+            const paidDebt = findPaidDebt(debts, p.debtorName, debtType);
+            if (paidDebt && isSingle) {
+              const amountForNew = p.amount > 0 ? p.amount : paidDebt.amount;
+              setPendingDebt({ step: 'asking-nueva-deuda', debtorName: p.debtorName, amount: amountForNew, debtType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+              addBotMsg(`La deuda de ${capitalizar(p.debtorName)} ya estaba registrada como pagada. ¿Te prestó dinero nuevo? Lo puedo registrar como nueva deuda y pago.`);
+              return;
+            }
+            debtResults.push({ found: false, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+            continue;
+          }
+
+          // Guard: overpayment
+          const alreadyPaid = matched.amountPaid ?? 0;
+          const owed = matched.amount - alreadyPaid;
+          if (p.amount > 0 && p.amount > owed) {
+            if (isSingle) {
+              setPendingDebt({ step: 'asking-confirmar-pago', debtorName: p.debtorName, amount: owed, debtType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', activeDebt: matched });
+              addBotMsg(`${capitalizar(p.debtorName)} solo debe $${owed.toLocaleString('es-CO')}, pero mencionaste $${p.amount.toLocaleString('es-CO')}. ¿Registrar el pago de lo que debe ($${owed.toLocaleString('es-CO')})?`);
+              return;
+            }
+            // Batch: clamp silently
             try {
-              const result = await applyDebtPayment(userId, matched, p.amount, p.isPartial);
-              debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
+              const result = await applyDebtPayment(userId, matched, owed, false);
+              debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: false, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
               if (dataType === 'pago-deuda-debo') {
-                await addDoc(collection(db, 'users', userId, 'expenses'), {
-                  concept: `Pago deuda: ${capitalizar(matched.name)}`,
-                  amount: result.effectivePayment,
-                  createdAt: serverTimestamp(),
-                  source: 'chat',
-                });
+                await addDoc(collection(db, 'users', userId, 'expenses'), { concept: `Pago deuda: ${capitalizar(matched.name)}`, amount: owed, createdAt: serverTimestamp(), source: 'chat' });
               } else {
-                await addDoc(collection(db, 'users', userId, 'sales'), {
-                  items: [{ product: `Cobro: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
-                  total: result.effectivePayment,
-                  createdAt: serverTimestamp(),
-                  source: 'chat',
-                });
+                await addDoc(collection(db, 'users', userId, 'sales'), { items: [{ product: `Cobro deuda: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: owed, subtotal: owed }], total: owed, createdAt: serverTimestamp(), source: 'chat' });
               }
             } catch (e) {
               console.error('Error updating debt:', e);
               debtResults.push({ found: true, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
             }
-          } else {
-            debtResults.push({ found: false, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
+            continue;
+          }
+
+          // Normal payment
+          try {
+            const result = await applyDebtPayment(userId, matched, p.amount, p.isPartial);
+            debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
+            if (dataType === 'pago-deuda-debo') {
+              await addDoc(collection(db, 'users', userId, 'expenses'), {
+                concept: `Pago deuda: ${capitalizar(matched.name)}`,
+                amount: result.effectivePayment,
+                createdAt: serverTimestamp(),
+                source: 'chat',
+              });
+            } else {
+              await addDoc(collection(db, 'users', userId, 'sales'), {
+                items: [{ product: `Cobro deuda: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
+                total: result.effectivePayment,
+                createdAt: serverTimestamp(),
+                source: 'chat',
+              });
+            }
+          } catch (e) {
+            console.error('Error updating debt:', e);
+            debtResults.push({ found: true, debtorName: p.debtorName, amount: p.amount, isPartial: p.isPartial, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben' });
           }
         }
 
@@ -668,9 +904,9 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               updatedAt: serverTimestamp(),
             });
           } else {
-            // Nuevo producto con precio — también necesitamos precioVenta, lo pedimos después
-            setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-precio-venta' });
-            addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} anotada. ¿A qué precio los vendes?`);
+            // Nuevo producto con precio — preguntar si lo va a vender
+            setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-si-vende' });
+            addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} c/u (total $${total.toLocaleString('es-CO')}). ¿Los vas a vender?`);
             setIsLoading(false);
             return;
           }
@@ -881,9 +1117,13 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             isDarkMode ? 'bg-[#B8860B]/15 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#B8860B]'
           )}>
             <span>
-              {pendingProduct.step === 'asking-price'
-                ? `Esperando precio de "${pendingProduct.concept}"`
-                : `Esperando stock de "${pendingProduct.concept}"`}
+              {pendingProduct.step === 'asking-precio-compra'
+                ? `¿A cuánto compraste ${pendingProduct.concept}?`
+                : pendingProduct.step === 'asking-si-vende'
+                ? `¿Vas a vender ${pendingProduct.concept}?`
+                : pendingProduct.step === 'asking-precio-venta'
+                ? `¿A cuánto vendes ${pendingProduct.concept}?`
+                : `¿Cuánto stock tienes de ${pendingProduct.concept}?`}
             </span>
             <button
               onClick={() => { setPendingProduct(null); addBotMsg('Ok, cancelado.'); }}
@@ -910,8 +1150,10 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
                 isDarkMode ? 'text-[#FDFBF0] placeholder:text-[#FDFBF0]/30' : 'text-[#2e2f2d] placeholder:text-[#5b5c5a]/50'
               )}
               placeholder={
-                pendingProduct?.step === 'asking-price'
+                pendingProduct?.step === 'asking-precio-compra' || pendingProduct?.step === 'asking-precio-venta'
                   ? 'Escribe el precio, ej: 1500 o 5 mil...'
+                  : pendingProduct?.step === 'asking-si-vende'
+                  ? 'Responde sí o no...'
                   : pendingProduct?.step === 'asking-stock'
                   ? 'Escribe el total de unidades disponibles...'
                   : isListening
