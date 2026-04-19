@@ -67,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const send = (t: string) => sendTelegram(chatId, t);
     await processMessage(snap.docs[0].id, text, 'telegram', send, db);
+    // Note: pending state (multi-turn flow) not yet implemented for Telegram
   } catch (err) {
     console.error('[telegram] Error:', err);
     try { await sendTelegram(chatId, '⚠️ Hubo un error. Intenta de nuevo.'); } catch (_) { /* ignore */ }
