@@ -89,7 +89,7 @@ export const Layout = ({
         isDarkMode ? "bg-[#0D0D0D]/85" : "bg-[#FDFBF0]/85"
       )}>
         {/* Logo centrado */}
-        <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none">
+        <div className="absolute left-1/2 -translate-x-1/2 translate-y-[1cm] pointer-events-none">
           <img src="/logoapp.png" alt="Voz-Activa" className="w-14 h-14 object-contain" />
         </div>
         <div className="flex items-center gap-3">
