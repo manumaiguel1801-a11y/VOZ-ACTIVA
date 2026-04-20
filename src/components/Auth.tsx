@@ -174,9 +174,11 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
         {/* Logo/Header */}
         <div className="mb-12 text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-[#B8860B] to-[#FFD700] rounded-3xl mx-auto flex items-center justify-center shadow-xl mb-6 rotate-12">
-            <IdCard className="w-10 h-10 text-black -rotate-12" />
-          </div>
+          <img
+            src="/logoapp.png"
+            alt="Voz-Activa"
+            className="w-36 h-36 mx-auto mb-6 object-contain"
+          />
           <h1 className="text-4xl font-black font-['Plus_Jakarta_Sans'] text-[#B8860B] tracking-tight">
             Voz-Activa
           </h1>

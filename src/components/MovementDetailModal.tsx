@@ -137,10 +137,23 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
 
               return (
                 <>
-                  {hasItems ? (
+                  {isCobro ? (
+                    <>
+                      <Row
+                        label="Concepto"
+                        value={sale.items?.[0]?.product ?? (sale as any).product ?? '—'}
+                        isDarkMode={isDarkMode}
+                      />
+                      <SourceRow source={sale.source} isDarkMode={isDarkMode} />
+                      <div className={cn('flex justify-between items-center p-4 rounded-xl mt-2', isDarkMode ? 'bg-green-500/10' : 'bg-green-50')}>
+                        <span className="font-black text-sm opacity-60">Total Ingreso</span>
+                        <span className="text-2xl font-black text-green-500">${sale.total.toLocaleString('es-CO')}</span>
+                      </div>
+                    </>
+                  ) : hasItems ? (
                     <div className="space-y-1 mb-4">
                       <p className={cn('text-[11px] font-black uppercase tracking-widest mb-3', isDarkMode ? 'text-white/40' : 'text-black/40')}>
-                        {isCobro ? 'Cobro recibido' : 'Productos vendidos'}
+                        Productos vendidos
                       </p>
                       {/* Table header */}
                       <div className={cn('grid text-[10px] font-black uppercase tracking-widest opacity-40 px-4 pb-1',
@@ -209,20 +222,15 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
                     </>
                   )}
 
-                  <SourceRow source={sale.source} isDarkMode={isDarkMode} />
-
-                  {/* Total */}
-                  <div className={cn(
-                    'flex justify-between items-center p-4 rounded-xl mt-2',
-                    isCobro
-                      ? isDarkMode ? 'bg-green-500/10' : 'bg-green-50'
-                      : isDarkMode ? 'bg-[#B8860B]/10' : 'bg-[#FFF8DC]'
-                  )}>
-                    <span className="font-black text-sm opacity-60">{isCobro ? 'Total ingreso' : 'Total venta'}</span>
-                    <span className={cn('text-2xl font-black', isCobro ? 'text-green-500' : 'text-[#B8860B]')}>
-                      ${sale.total.toLocaleString('es-CO')}
-                    </span>
-                  </div>
+                  {!isCobro && (
+                    <>
+                      <SourceRow source={sale.source} isDarkMode={isDarkMode} />
+                      <div className={cn('flex justify-between items-center p-4 rounded-xl mt-2', isDarkMode ? 'bg-[#B8860B]/10' : 'bg-[#FFF8DC]')}>
+                        <span className="font-black text-sm opacity-60">Total venta</span>
+                        <span className="text-2xl font-black text-[#B8860B]">${sale.total.toLocaleString('es-CO')}</span>
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}
