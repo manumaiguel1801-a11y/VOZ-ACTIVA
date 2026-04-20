@@ -119,25 +119,60 @@ function findPaidDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'
   ) ?? null;
 }
 
-/** Fuzzy match product name against inventory (3 levels) */
+function stemEs(s: string): string {
+  if (s.endsWith('es') && s.length > 3) return s.slice(0, -2);
+  if (s.endsWith('s') && s.length > 2) return s.slice(0, -1);
+  return s;
+}
+
+function strSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= b.length; j++) {
+      const val = a[i - 1] === b[j - 1] ? row[j - 1] : 1 + Math.min(row[j - 1], row[j], prev);
+      row[j - 1] = prev;
+      prev = val;
+    }
+    row[b.length] = prev;
+  }
+  return (maxLen - row[b.length]) / maxLen;
+}
+
+/** Fuzzy match product name against inventory (4 levels) */
 function findInventoryProduct(inventory: InventoryProduct[], name: string): InventoryProduct | null {
   const n = normalizeStr(name);
   if (!n) return null;
   // 1. Exact match
   const exact = inventory.find(p => normalizeStr(p.nombre) === n);
   if (exact) return exact;
-  // 2. Contains match (either direction) — handles "agua" vs "agua botella"
+  // 2. Contains (handles simple singular/plural since one is a substring of the other)
   const contains = inventory.find(p => {
     const pn = normalizeStr(p.nombre);
     return pn.includes(n) || n.includes(pn);
   });
   if (contains) return contains;
-  // 3. Word-level: any significant word (>2 chars) in common
-  // handles "aguas" matching "agua botella", "gaseosa personal" matching "gaseosas"
+  // 3. Word-level inclusion
   const nWords = n.split(/\s+/).filter(w => w.length > 2);
-  return inventory.find(p => {
+  const wordMatch = inventory.find(p => {
     const pWords = normalizeStr(p.nombre).split(/\s+/);
     return nWords.some(nw => pWords.some(pw => pw.includes(nw) || nw.includes(pw)));
+  });
+  if (wordMatch) return wordMatch;
+  // 4. Stem + fuzzy similarity (singular/plural, pequeños typos)
+  const nStem = stemEs(n);
+  return inventory.find(p => {
+    const pn = normalizeStr(p.nombre);
+    const pStem = stemEs(pn);
+    if (nStem === pStem) return true;
+    if (strSimilarity(n, pn) > 0.8) return true;
+    if (strSimilarity(nStem, pStem) > 0.8) return true;
+    const nStems = nWords.map(stemEs);
+    const pStems = pn.split(/\s+/).filter(w => w.length > 2).map(stemEs);
+    return nStems.some(ns => pStems.some(ps => ns === ps || strSimilarity(ns, ps) > 0.8));
   }) ?? null;
 }
 
@@ -445,17 +480,11 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           return;
         }
         if (pendingProduct.isCompra && pendingProduct.productId) {
-          // compra de producto EXISTENTE — ya tenemos todo, guardar directamente
-          const { concept, quantity, productId, productCurrentStock = 0 } = pendingProduct;
+          // compra de producto EXISTENTE — FIX 1: guardar gasto, preguntar si vende
+          const { concept, quantity } = pendingProduct;
           const total = quantity * price;
-          const newStock = productCurrentStock + quantity;
           setIsLoading(true);
           try {
-            await updateDoc(doc(db, 'users', userId, 'inventario', productId), {
-              cantidad: newStock,
-              precioCompra: price,
-              updatedAt: serverTimestamp(),
-            });
             await addDoc(collection(db, 'users', userId, 'expenses'), {
               concept: `Compra: ${concept}`,
               amount: total,
@@ -463,16 +492,13 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               source: 'chat',
               items: [{ product: concept, quantity, unitPrice: price, subtotal: total }],
             });
-            addBotMsg(
-              `¡Listo! Compraste ${quantity} ${concept} a $${price.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
-              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: price }, stockUpdate: { nombre: concept, newStock } }
-            );
+            setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-si-vende' });
+            addBotMsg(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${concept} anotado. ¿Los vas a vender?`);
           } catch (e) {
             console.error('[Chat] Error al guardar compra:', e);
             addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
           } finally {
             setIsLoading(false);
-            setPendingProduct(null);
           }
         } else if (pendingProduct.isCompra) {
           // compra de producto NUEVO — preguntar si lo va a vender
@@ -500,33 +526,64 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
         }
 
         if (isNo) {
-          const { concept, quantity, precioCompra = 0 } = pendingProduct;
-          const total = quantity * precioCompra;
-          setIsLoading(true);
-          try {
-            await addDoc(collection(db, 'users', userId, 'expenses'), {
-              concept: `Compra: ${concept}`,
-              amount: total,
-              createdAt: serverTimestamp(),
-              source: 'chat',
-              items: [{ product: concept, quantity, unitPrice: precioCompra, subtotal: total }],
-            });
-            addBotMsg(
-              `Entendido 👍 Registré $${total.toLocaleString('es-CO')} de gasto por ${quantity} ${concept}. No se tocó el inventario.`,
-              { saved: true, data: { type: 'gasto', amount: total, concept } }
-            );
-          } catch (e) {
-            addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
-          } finally {
-            setIsLoading(false);
+          if (pendingProduct.productId) {
+            // Producto existente — gasto ya guardado, solo confirmar
+            addBotMsg(`Entendido 👍 Quedó registrado solo como gasto. No se tocó el inventario.`, { saved: true });
             setPendingProduct(null);
+          } else {
+            // Producto nuevo — guardar gasto ahora
+            const { concept, quantity, precioCompra = 0 } = pendingProduct;
+            const total = quantity * precioCompra;
+            setIsLoading(true);
+            try {
+              await addDoc(collection(db, 'users', userId, 'expenses'), {
+                concept: `Compra: ${concept}`,
+                amount: total,
+                createdAt: serverTimestamp(),
+                source: 'chat',
+                items: [{ product: concept, quantity, unitPrice: precioCompra, subtotal: total }],
+              });
+              addBotMsg(
+                `Entendido 👍 Registré $${total.toLocaleString('es-CO')} de gasto por ${quantity} ${concept}. No se tocó el inventario.`,
+                { saved: true, data: { type: 'gasto', amount: total, concept } }
+              );
+            } catch (e) {
+              addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+            } finally {
+              setIsLoading(false);
+              setPendingProduct(null);
+            }
           }
           return;
         }
 
         if (isYes) {
-          setPendingProduct({ ...pendingProduct, step: 'asking-precio-venta' });
-          addBotMsg(`¿A qué precio vendes ${pendingProduct.concept}?`);
+          if (pendingProduct.productId) {
+            // Producto existente — actualizar stock
+            const { productId, productCurrentStock = 0, quantity, concept, precioCompra } = pendingProduct;
+            const newStock = productCurrentStock + quantity;
+            setIsLoading(true);
+            try {
+              await updateDoc(doc(db, 'users', userId, 'inventario', productId), {
+                cantidad: newStock,
+                ...(precioCompra ? { precioCompra } : {}),
+                updatedAt: serverTimestamp(),
+              });
+              addBotMsg(
+                `✅ Stock de ${concept} actualizado: ${newStock} unidades.`,
+                { saved: true, stockUpdate: { nombre: concept, newStock } }
+              );
+            } catch (e) {
+              addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
+            } finally {
+              setIsLoading(false);
+              setPendingProduct(null);
+            }
+          } else {
+            // Producto nuevo — pedir precio de venta
+            setPendingProduct({ ...pendingProduct, step: 'asking-precio-venta' });
+            addBotMsg(`¿A qué precio vendes ${pendingProduct.concept}?`);
+          }
           return;
         }
 
@@ -801,7 +858,13 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           const newStock = Math.max(0, (foundProduct.cantidad ?? 0) - quantity);
           try {
             await addDoc(collection(db, 'users', userId, 'sales'), {
-              items: [{ product: foundProduct.nombre, quantity, unitPrice, subtotal: total }],
+              items: [{
+                product: foundProduct.nombre,
+                quantity,
+                unitPrice,
+                subtotal: total,
+                ...(isPrecioEspecial ? { regularUnitPrice: storedPrice } : {}),
+              }],
               total,
               createdAt: serverTimestamp(),
               source: 'chat',
@@ -898,33 +961,29 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
 
         try {
           if (foundProduct) {
-            await updateDoc(doc(db, 'users', userId, 'inventario', foundProduct.id), {
-              cantidad: (foundProduct.cantidad ?? 0) + quantity,
-              precioCompra,
-              updatedAt: serverTimestamp(),
+            // FIX 1: guardar gasto sin tocar inventario, preguntar si vende
+            await addDoc(collection(db, 'users', userId, 'expenses'), {
+              concept: `Compra: ${foundProduct.nombre}`,
+              amount: total,
+              createdAt: serverTimestamp(),
+              source: 'chat',
+              items: [{ product: foundProduct.nombre, quantity, unitPrice: precioCompra, subtotal: total }],
             });
+            setPendingProduct({
+              concept: foundProduct.nombre,
+              quantity,
+              isCompra: true,
+              step: 'asking-si-vende',
+              precioCompra,
+              productId: foundProduct.id,
+              productCurrentStock: foundProduct.cantidad ?? 0,
+            });
+            addBotMsg(`Listo, anoté el gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${foundProduct.nombre}. ¿Lo vas a vender?`);
           } else {
             // Nuevo producto con precio — preguntar si lo va a vender
             setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-si-vende' });
             addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} c/u (total $${total.toLocaleString('es-CO')}). ¿Los vas a vender?`);
-            setIsLoading(false);
-            return;
           }
-          await addDoc(collection(db, 'users', userId, 'expenses'), {
-            concept: `Compra: ${concept}`,
-            amount: total,
-            createdAt: serverTimestamp(),
-            source: 'chat',
-          });
-          const newStock = (foundProduct.cantidad ?? 0) + quantity;
-          setMessages(prev => [...prev, {
-            role: 'model',
-            text: `¡Listo! Compraste ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} c/u = $${total.toLocaleString('es-CO')}. Stock actualizado: ${newStock} unidades.`,
-            timestamp: new Date(),
-            saved: true,
-            data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra },
-            stockUpdate: { nombre: concept, newStock },
-          }]);
         } catch (e) {
           console.error('[Chat] Error al guardar compra:', e);
           setMessages(prev => [...prev, {

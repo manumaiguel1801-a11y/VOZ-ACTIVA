@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShoppingBag, TrendingDown, UserPlus, UserMinus, Calendar, Send, MessageCircle, Camera, Pencil } from 'lucide-react';
+import { X, ShoppingBag, TrendingDown, UserPlus, UserMinus, Calendar, Send, MessageCircle, Camera, Pencil, ArrowUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Sale, Expense, Debt, getSaleLabel } from '../types';
 
@@ -57,23 +57,30 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
   const isExpense = item.kind === 'expense';
   const isDebt    = item.kind === 'debt';
 
-  const accentColor = isSale ? '#B8860B' : isExpense ? '#ef4444' : item.kind === 'debt' && item.data.type === 'me-deben' ? '#B8860B' : '#f97316';
+  // FIX 3: detectar cobros de deuda dentro de ventas
+  const isCobro = isSale && /^cobro/i.test(item.data.items?.[0]?.product ?? item.data.product ?? '');
 
-  const headerIcon = isSale
-    ? <ShoppingBag className="w-5 h-5" />
-    : isExpense
-      ? <TrendingDown className="w-5 h-5" />
-      : item.data.type === 'me-deben'
-        ? <UserPlus className="w-5 h-5" />
-        : <UserMinus className="w-5 h-5" />;
+  const accentColor = isCobro ? '#22c55e' : isSale ? '#B8860B' : isExpense ? '#ef4444' : item.kind === 'debt' && item.data.type === 'me-deben' ? '#B8860B' : '#f97316';
 
-  const headerTitle = isSale
-    ? 'Detalle de Venta'
-    : isExpense
-      ? 'Detalle de Gasto'
-      : item.data.type === 'me-deben'
-        ? 'Me deben'
-        : 'Debo';
+  const headerIcon = isCobro
+    ? <ArrowUp className="w-5 h-5" />
+    : isSale
+      ? <ShoppingBag className="w-5 h-5" />
+      : isExpense
+        ? <TrendingDown className="w-5 h-5" />
+        : item.data.type === 'me-deben'
+          ? <UserPlus className="w-5 h-5" />
+          : <UserMinus className="w-5 h-5" />;
+
+  const headerTitle = isCobro
+    ? 'Detalle de Ingreso'
+    : isSale
+      ? 'Detalle de Venta'
+      : isExpense
+        ? 'Detalle de Gasto'
+        : item.data.type === 'me-deben'
+          ? 'Me deben'
+          : 'Debo';
 
   return (
     <AnimatePresence>
@@ -133,7 +140,7 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
                   {hasItems ? (
                     <div className="space-y-1 mb-4">
                       <p className={cn('text-[11px] font-black uppercase tracking-widest mb-3', isDarkMode ? 'text-white/40' : 'text-black/40')}>
-                        Productos vendidos
+                        {isCobro ? 'Cobro recibido' : 'Productos vendidos'}
                       </p>
                       {/* Table header */}
                       <div className={cn('grid text-[10px] font-black uppercase tracking-widest opacity-40 px-4 pb-1',
@@ -173,13 +180,22 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
                                 <p className="text-sm font-black text-[#B8860B]">${it.subtotal.toLocaleString('es-CO')}</p>
                               </div>
                             </div>
-                            {hasDiscount && (
-                              <div className="flex items-center gap-1.5 pt-1">
-                                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 uppercase tracking-wide">
-                                  Oferta · Ahorro ${((it.regularUnitPrice! - it.unitPrice) * it.quantity).toLocaleString('es-CO')}
-                                </span>
-                              </div>
-                            )}
+                            {hasDiscount && (() => {
+                              const isOferta = it.regularUnitPrice! > it.unitPrice;
+                              const diff = Math.abs(it.regularUnitPrice! - it.unitPrice) * it.quantity;
+                              return (
+                                <div className="flex items-center gap-1.5 pt-1">
+                                  <span className={cn(
+                                    'text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide',
+                                    isOferta ? 'bg-green-500/15 text-green-500' : 'bg-amber-500/15 text-amber-500'
+                                  )}>
+                                    {isOferta
+                                      ? `Oferta · Ahorro $${diff.toLocaleString('es-CO')}`
+                                      : `Precio especial +$${diff.toLocaleString('es-CO')}`}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -196,9 +212,16 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
                   <SourceRow source={sale.source} isDarkMode={isDarkMode} />
 
                   {/* Total */}
-                  <div className={cn('flex justify-between items-center p-4 rounded-xl mt-2', isDarkMode ? 'bg-[#B8860B]/10' : 'bg-[#FFF8DC]')}>
-                    <span className="font-black text-sm opacity-60">Total venta</span>
-                    <span className="text-2xl font-black text-[#B8860B]">${sale.total.toLocaleString('es-CO')}</span>
+                  <div className={cn(
+                    'flex justify-between items-center p-4 rounded-xl mt-2',
+                    isCobro
+                      ? isDarkMode ? 'bg-green-500/10' : 'bg-green-50'
+                      : isDarkMode ? 'bg-[#B8860B]/10' : 'bg-[#FFF8DC]'
+                  )}>
+                    <span className="font-black text-sm opacity-60">{isCobro ? 'Total ingreso' : 'Total venta'}</span>
+                    <span className={cn('text-2xl font-black', isCobro ? 'text-green-500' : 'text-[#B8860B]')}>
+                      ${sale.total.toLocaleString('es-CO')}
+                    </span>
                   </div>
                 </>
               );

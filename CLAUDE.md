@@ -18,24 +18,27 @@ There is no test framework configured in this project.
 ## Environment Setup
 
 Copy `.env.example` to `.env.local` and set:
-- `GEMINI_API_KEY` — required for the AI chat assistant (Gemini API)
+- `GEMINI_API_KEY` — required for both the in-app chat and the serverless bot functions
 
-Firebase configuration is loaded from `firebase-applet-config.json` (not an env variable). The Firestore database ID is also read from that file via `firebaseConfig.firestoreDatabaseId`.
+Firebase client config is loaded from `firebase-applet-config.json` (not an env variable). The Firestore database ID is read from that file via `firebaseConfig.firestoreDatabaseId`.
+
+Required env vars for Vercel serverless functions (`api/`):
+- `FIREBASE_SERVICE_ACCOUNT` (full JSON string of Firebase Admin service account)
+- `FIRESTORE_DATABASE_ID`
+- `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+- `TELEGRAM_BOT_TOKEN`
 
 ## Architecture
 
 **Stack:** React 19 + Vite 6 + TypeScript + Tailwind CSS v4 + Firebase + Gemini AI
 
-The app is a mobile-first PWA for microbusiness owners (target: Colombian street vendors). The UI is entirely in Spanish.
+Mobile-first PWA for Colombian street vendors / microbusiness owners. The UI is entirely in Spanish.
 
 ### Application Flow
 
-`App.tsx` is the root. It manages:
-- Firebase Auth state via `onAuthStateChanged`
-- User profile via a Firestore `onSnapshot` listener on `users/{uid}`
-- A single `activeTab` state (type `Tab`) that drives which view renders inside `<Layout>`
+`App.tsx` is the root. It subscribes to Firebase Auth and then opens four `onSnapshot` listeners (sales, expenses, debts, inventory) per authenticated user. All data lives in `App` state and flows down as props — there is no React context or state manager. Views are selected by a single `activeTab: Tab` state.
 
-If the user is not authenticated, it renders `<Auth>` instead of the main layout.
+`?verificar=CODE` in the URL short-circuits the normal flow and renders `<VerificationView>` before auth (used for passport identity verification).
 
 ### Tab / View Mapping
 
@@ -45,63 +48,80 @@ If the user is not authenticated, it renders `<Auth>` instead of the main layout
 | `finanzas`    | `FinanceView`         | Financial reports/history            |
 | `camara`      | `CameraView`          | Camera-based receipt/product scan    |
 | `inventario`  | `InventorySalesView`  | Inventory and sales management       |
-| `pasaporte`   | `PassportView`        | "Business passport" / credit profile |
-| `perfil`      | `ProfileView`         | User profile editor                  |
+| `pasaporte`   | `PassportView`        | Credit score ("pasaporte") + PDF export |
+| `perfil`      | `ProfileView`         | User profile editor + bot linking    |
 
-Navigation is rendered by `<Layout>` as a fixed bottom nav bar. The floating `<ChatBubble>` (also inside Layout) opens the `<Chat>` component, which calls the Gemini service.
+Navigation is a fixed bottom nav bar inside `<Layout>`. The floating `<ChatBubble>` opens `<Chat>`, which calls the client-side Gemini service.
 
 ### Key Files
 
-- `src/types.ts` — shared types: `Tab`, `Sale`, `Expense`, `Debt`, `InventoryProduct`, `UserProfile`
+- `src/types.ts` — shared types and small helper functions (`getSaleLabel`, `getPrecioVenta`, `getMargen`, etc.)
 - `src/firebase.ts` — initializes Firebase app, exports `auth` and `db`
-- `src/services/gemini.ts` — client-side Gemini wrapper for the in-app chat (different from the API-side version)
+- `src/services/gemini.ts` — **client-side** Gemini wrapper for the in-app chat bubble
+- `src/services/scoringService.ts` — credit score algorithm (Colombian 150–950 scale) and all PassportView helpers
+- `src/services/pdfService.ts` — generates the business passport PDF with jsPDF + QR code
 - `src/lib/utils.ts` — `cn()` helper (clsx + tailwind-merge)
 
 ### Firestore Data Model
 
-Root document `users/{userId}` (ID = Firebase Auth UID) with fields: `firstName`, `lastName`, `idNumber`, `phone`, `birthDate`, `createdAt`, `email?`, `photoURL?`, `telegramChatId?`, `whatsappPhone?`, `linkCode?`, `verificationCode?`.
+Root document `users/{userId}` (ID = Firebase Auth UID):
+- Fields: `firstName`, `lastName`, `idNumber`, `phone`, `birthDate`, `createdAt`, `email?`, `photoURL?`
+- Bot linking: `telegramChatId?`, `whatsappPhone?`, `linkCode?: { code, expiresAt }`, `verificationCode?: { code, expiresAt }`
+- Bot conversation state: `whatsappHistory`, `whatsappPendingState`, `telegramHistory`, `telegramPendingState`, `whatsappLastMsgId` (deduplication)
 
 Subcollections under each user:
 - `sales/` — `{ items: SaleItem[], total, createdAt, source }`
 - `expenses/` — `{ concept, amount, items?, createdAt, source }`
-- `debts/` — `{ name, concept, amount, type ('me-deben'|'debo'), status, amountPaid?, createdAt }`
+- `debts/` — `{ name, concept, amount, type ('me-deben'|'debo'), status ('pendiente'|'parcial'|'pagada'), amountPaid?, paidAt?, createdAt }`
 - `inventario/` — `{ nombre, cantidad, precioCompra, precioVenta, createdAt, updatedAt? }`
 - `scoreHistory/` — `{ score, weekKey, recordedAt }`
 
-Messaging state (also on the user doc): `whatsappHistory`, `whatsappPendingState`, `telegramHistory`, `telegramPendingState`.
+The `source` field on sales/expenses tracks where the movement came from: `'manual' | 'chat' | 'telegram' | 'whatsapp' | 'camara'`.
 
-Rules in `firestore.rules` — users read/write only their own subtree. `passportVerifications/{code}` is publicly readable.
+**Important double-entry patterns:**
+- `deuda-me-deben` (loan given) → writes to both `debts` AND `expenses` (cash left the business)
+- `deuda-debo` (loan received) → writes to both `debts` AND `sales` (cash entered the business)
+- `pago-deuda-debo` (paying a debt) → writes to `expenses`
+- `cobro-deuda-me-deben` (collecting a debt) → writes to `sales`
+
+Firestore rules (`firestore.rules`): users read/write only their own subtree. `passportVerifications/{code}` is publicly readable.
 
 ### Serverless API (Vercel)
 
-`api/` contains Vercel serverless functions:
-- `api/whatsapp.ts` — WhatsApp Business webhook. Handles account linking via `vincular <code>`, then routes to `processMessage` or the multi-turn `handlePendingState` state machine.
-- `api/telegram.ts` — Telegram Bot webhook (same architecture).
-- `api/_lib/gemini.ts` — **Server-side** Gemini client. Uses `gemini-2.5-flash` (fallback: `gemini-2.0-flash`) with structured JSON output enforced via `responseSchema`. This is separate from `src/services/gemini.ts`.
-- `api/_lib/processMessage.ts` — Shared business logic for both bots: calls Gemini, maps parsed movement types to Firestore writes, handles inventory lookups and debt payments. Returns a `PendingState` when multi-turn input is needed (e.g., price for a new product).
+`api/` contains Vercel serverless functions (30s max duration per `vercel.json`):
+- `api/whatsapp.ts` — WhatsApp Business webhook. GET verifies the webhook token. POST: handles `vincular <code>` for account linking, then routes to `processMessage` (normal) or `handlePendingState` (multi-turn in progress).
+- `api/telegram.ts` — Telegram Bot webhook, same architecture as WhatsApp.
+- `api/_lib/processMessage.ts` — Shared business logic for both bots. Calls Gemini, maps movement types to Firestore writes, handles inventory lookups (fuzzy name match), debt payments, and multi-turn state. Returns a `PendingState` when more input is needed.
+- `api/_lib/gemini.ts` — **Server-side** Gemini client with structured JSON output via `responseSchema`.
 - `api/_lib/whatsapp-bot.ts` / `api/_lib/telegram-bot.ts` — Thin send helpers.
 
-Required env vars for the API (Vercel dashboard or `.env.local`):
-- `GEMINI_API_KEY`
-- `FIREBASE_SERVICE_ACCOUNT` (JSON string of Firebase Admin service account)
-- `FIRESTORE_DATABASE_ID`
-- `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
-- `TELEGRAM_BOT_TOKEN`
+Bot conversation history is capped at `MAX_HISTORY = 10` entries (5 turns) per user per channel and stored on the user doc.
 
-### Gemini AI Assistant
+### Gemini AI — Two Separate Integrations
 
-Two separate Gemini integrations with different purposes:
+**Server-side** (`api/_lib/gemini.ts`): Used by Telegram/WhatsApp bots. Model: `gemini-2.5-flash` (fallback: `gemini-2.0-flash`). Enforces structured JSON via `responseSchema`. Returns `{ message, data?, movements? }` where `data` is the primary `ParsedMovement` and `movements` contains secondary ones for multi-action messages.
 
-**Server-side** (`api/_lib/gemini.ts`): Used by Telegram/WhatsApp bots. Enforces structured JSON via `responseSchema`. Returns `{ message, data?, movements? }` where `data` is the primary `ParsedMovement` and `movements` contains secondary ones (multi-action messages). Model: `gemini-2.5-flash`.
+**Client-side** (`src/services/gemini.ts`): Used by the in-app chat bubble. Model: `gemini-2.0-flash-exp` (injected via Vite `define`). Expects `{ message, data?: { type, amount, concept } }`.
 
-**Client-side** (`src/services/gemini.ts`): Used by the in-app chat bubble. Sends conversation history and a system prompt, expects `{ message, data?: { type, amount, concept } }`. Model: `gemini-2.0-flash-exp` (injected via Vite `define` at build time).
+Movement types: `venta`, `gasto`, `compra`, `deuda-me-deben`, `deuda-debo`, `pago-deuda-debo`, `cobro-deuda-me-deben`.
 
-Movement types parsed by Gemini: `venta`, `gasto`, `compra`, `deuda-me-deben`, `deuda-debo`, `pago-deuda-debo`, `cobro-deuda-me-deben`.
+The server-side system prompt uses a "mirror tone" rule: the bot must match the user's register exactly (Colombian slang, neutral, or formal). It also corrects speech-to-text artifacts common in Colombian Spanish (e.g., "vendí dos" → STT outputs "22" → bot corrects to quantity 2).
+
+### Credit Score (PassportView)
+
+`scoringService.ts` computes a score on the Colombian 150–950 scale from five weighted factors:
+- Consistencia de ingresos (0–30): regularity of sales activity
+- Capacidad de pago (0–25): income-to-expense margin
+- Gestión de fiados (0–20): debt recovery rate and own debt repayment speed
+- Salud de inventario (0–15): purchase-to-sales ratio regularity
+- Calidad de datos (0–10): activity frequency and description quality
+
+Requires ≥ 5 total records (`hasEnoughData`) before showing a score. `pdfService.ts` uses these results to generate a downloadable business passport PDF.
 
 ### Styling
 
-- Tailwind CSS v4 loaded via `@tailwindcss/vite` plugin (no `tailwind.config.js`)
+- Tailwind CSS v4 via `@tailwindcss/vite` plugin — no `tailwind.config.js`
 - Brand colors: gold `#B8860B` / `#FFD700` / `#DAA520`, cream background `#FDFBF0`, dark mode `#0D0D0D` / `#1A1A1A`
 - Font: `Be Vietnam Pro` (body), `Plus Jakarta Sans` (headings)
-- All components accept an `isDarkMode: boolean` prop and apply conditional classes via `cn()`
+- All view components accept `isDarkMode: boolean` and apply conditional classes via `cn()`
 - Animations via `motion/react` (Framer Motion v12) with `AnimatePresence` for tab transitions

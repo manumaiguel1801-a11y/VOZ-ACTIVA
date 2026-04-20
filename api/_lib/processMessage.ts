@@ -54,6 +54,7 @@ interface SaveMovementResult {
   storedPrice?: number;
   needsVentaPrice?: boolean;
   isNewCompra?: boolean;
+  isExistingCompra?: boolean;
   needsCompraPrice?: boolean;
   concept?: string;
   quantity?: number;
@@ -66,22 +67,63 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
+function stemEs(s: string): string {
+  if (s.endsWith('es') && s.length > 3) return s.slice(0, -2);
+  if (s.endsWith('s') && s.length > 2) return s.slice(0, -1);
+  return s;
+}
+
+function strSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  // Levenshtein (space-optimised)
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= b.length; j++) {
+      const val = a[i - 1] === b[j - 1] ? row[j - 1] : 1 + Math.min(row[j - 1], row[j], prev);
+      row[j - 1] = prev;
+      prev = val;
+    }
+    row[b.length] = prev;
+  }
+  return (maxLen - row[b.length]) / maxLen;
+}
+
 async function findInventoryProduct(userRef: DocumentReference, name: string) {
   const n = normalizeStr(name);
   if (!n) return null;
   const snap = await userRef.collection('inventario').get();
   const products = snap.docs.map(d => ({ id: d.id, ref: d.ref, ...(d.data() as any) }));
+  // 1. Exact
   const exact = products.find((p: any) => normalizeStr(p.nombre) === n);
   if (exact) return exact;
+  // 2. Contains (handles simple singular/plural since one is a substring of the other)
   const contains = products.find((p: any) => {
     const pn = normalizeStr(p.nombre);
     return pn.includes(n) || n.includes(pn);
   });
   if (contains) return contains;
+  // 3. Word-level inclusion
   const nWords = n.split(/\s+/).filter((w: string) => w.length > 2);
-  return products.find((p: any) => {
+  const wordMatch = products.find((p: any) => {
     const pWords = normalizeStr(p.nombre).split(/\s+/);
     return nWords.some((nw: string) => pWords.some((pw: string) => pw.includes(nw) || nw.includes(pw)));
+  });
+  if (wordMatch) return wordMatch;
+  // 4. Stem + fuzzy similarity (singular/plural, small typos)
+  const nStem = stemEs(n);
+  return products.find((p: any) => {
+    const pn = normalizeStr(p.nombre);
+    const pStem = stemEs(pn);
+    if (nStem === pStem) return true;
+    if (strSimilarity(n, pn) > 0.8) return true;
+    if (strSimilarity(nStem, pStem) > 0.8) return true;
+    // Word-level stem match
+    const nStems = nWords.map(stemEs);
+    const pStems = pn.split(/\s+/).filter((w: string) => w.length > 2).map(stemEs);
+    return nStems.some((ns: string) => pStems.some((ps: string) => ns === ps || strSimilarity(ns, ps) > 0.8));
   }) ?? null;
 }
 
@@ -226,13 +268,24 @@ export async function processMessage(
     };
   }
 
-  // Compra: producto existente sin precio — stock ya actualizado, pedir precio para el gasto
+  // Compra: producto existente sin precio — pedir precio primero
   if (sr.needsCompraPrice && sr.concept) {
-    const stockMsg = sr.newStock !== undefined ? ` Stock actualizado: ${sr.newStock} uds.` : '';
-    await send(`Listo, actualicé el stock de *${sr.concept}*.${stockMsg}\n¿A cuánto los compraste? (para registrar el gasto)`);
+    await send(`¿A cuánto compraste ${sr.concept}?`);
     return {
       updatedHistory,
       pendingState: { type: 'compra-existente', concept: sr.concept, quantity: sr.quantity ?? 1, step: 'asking-precio-compra', source },
+    };
+  }
+
+  // Compra: producto existente con precio — preguntar si va a vender (FIX 1)
+  if (sr.isExistingCompra && sr.concept) {
+    const qty = sr.quantity ?? 1;
+    const pc = sr.precioCompra ?? 0;
+    const totalStr = pc > 0 ? `$${(qty * pc).toLocaleString('es-CO')}` : `$${amount.toLocaleString('es-CO')}`;
+    await send(`Listo, anoté el gasto de ${totalStr} por ${qty} ${sr.concept}. ¿Los vas a vender?`);
+    return {
+      updatedHistory,
+      pendingState: { type: 'compra-existente', concept: sr.concept, quantity: qty, precioCompra: pc, step: 'asking-si-vende', source },
     };
   }
 
@@ -303,11 +356,11 @@ async function saveMovement(
         : (amount > 0 ? (qty > 1 ? Math.round(amount / qty) : amount) : 0);
       const total = precioCompra > 0 ? qty * precioCompra : amount;
       const foundProduct = await findInventoryProduct(userRef, concept);
+      const capConcept = capitalizeFirst(concept);
 
       if (foundProduct) {
-        const newStock = (foundProduct.cantidad ?? 0) + qty;
         if (precioCompra > 0) {
-          await foundProduct.ref.update({ cantidad: newStock, precioCompra, updatedAt: now });
+          // FIX 1: guardar gasto sin tocar inventario — preguntar si vende primero
           await userRef.collection('expenses').add({
             concept: `Compra: ${foundProduct.nombre}`,
             amount: total,
@@ -315,16 +368,14 @@ async function saveMovement(
             createdAt: now,
             source,
           });
-          return { newStock };
+          return { isExistingCompra: true, concept: foundProduct.nombre, quantity: qty, precioCompra };
         } else {
-          // Stock updated, expense missing price
-          await foundProduct.ref.update({ cantidad: newStock, updatedAt: now });
-          return { needsCompraPrice: true, concept: foundProduct.nombre, quantity: qty, newStock };
+          // Sin precio — preguntar precio antes de tocar nada
+          return { needsCompraPrice: true, concept: foundProduct.nombre, quantity: qty };
         }
       }
 
       // New product — capitalize name
-      const capConcept = capitalizeFirst(concept);
       if (precioCompra > 0) {
         await userRef.collection('expenses').add({
           concept: `Compra: ${capConcept}`,
@@ -620,8 +671,34 @@ export async function handlePendingState(
       createdAt: FieldValue.serverTimestamp(),
       source: pendingState.source,
     });
-    await send(`✅ Gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${concept} registrado.`);
-    return null;
+    await send(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${concept} anotado. ¿Los vas a vender?`);
+    return { ...pendingState, precioCompra: price, step: 'asking-si-vende' };
+  }
+
+  // ── Compra existente — asking-si-vende (FIX 1) ────────────────────────────
+  if (pendingState.type === 'compra-existente' && pendingState.step === 'asking-si-vende') {
+    if (isAfirmativo(lower)) {
+      const { concept = '', quantity = 1, precioCompra } = pendingState;
+      const existingProduct = await findInventoryProduct(userRef, concept);
+      if (existingProduct) {
+        const newStock = (existingProduct.cantidad ?? 0) + quantity;
+        await existingProduct.ref.update({
+          cantidad: newStock,
+          ...(precioCompra ? { precioCompra } : {}),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        await send(`✅ Stock de *${existingProduct.nombre}* actualizado: ${newStock} uds.`);
+      } else {
+        await send(`✅ Gasto registrado. No encontré "${concept}" en inventario para actualizar el stock.`);
+      }
+      return null;
+    }
+    if (isNegativo(lower)) {
+      await send('Entendido. Quedó registrado solo como gasto. 👍');
+      return null;
+    }
+    await send(`No entendí. ¿Vas a vender *${pendingState.concept}*? Responde *sí* o *no*.`);
+    return pendingState;
   }
 
   // ── Venta nueva — asking-precio-venta ─────────────────────────────────────
