@@ -13,6 +13,7 @@ import { InventorySalesView } from './components/InventorySalesView';
 import { PassportView } from './components/PassportView';
 import { ProfileView } from './components/ProfileView';
 import { Auth } from './components/Auth';
+import { VerificationView } from './components/VerificationView';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,6 +27,7 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+  const verifyCode = React.useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -95,6 +97,7 @@ export default function App() {
     );
   }
 
+  if (verifyCode) return <VerificationView code={verifyCode} isDarkMode={isDarkMode} />;
   if (!user) return <Auth isDarkMode={isDarkMode} />;
 
   return (
@@ -134,7 +137,7 @@ export default function App() {
         )}
         {activeTab === 'pasaporte' && (
           <motion.div key="passport" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <PassportView isDarkMode={isDarkMode} sales={sales} expenses={expenses} debts={debts} profile={profile} />
+            <PassportView isDarkMode={isDarkMode} sales={sales} expenses={expenses} debts={debts} profile={profile} userId={user.uid} />
           </motion.div>
         )}
         {activeTab === 'perfil' && profile && (

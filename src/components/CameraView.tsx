@@ -18,6 +18,7 @@ import {
   X,
   Check,
   Lightbulb,
+  Clock,
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -165,6 +166,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
   // Debts section
   const [debtType, setDebtType] = useState<'me-deben' | 'debo'>('me-deben');
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
   const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
 
@@ -430,19 +432,19 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       });
       if (monto > 0) {
         if (debt.type === 'me-deben') {
-          // Ingreso: alguien nos pagó
           await addDoc(collection(db, 'users', userId, 'sales'), {
-            items: [{ product: `Cobro: ${debt.name}`, quantity: 1, unitPrice: monto, subtotal: monto }],
+            items: [{ product: `Cobro deuda: ${debt.name}`, quantity: 1, unitPrice: monto, subtotal: monto }],
             total: monto,
             createdAt: serverTimestamp(),
+            source: 'manual',
           });
           showToast('¡Listo! Ingreso registrado');
         } else {
-          // Gasto: nosotros pagamos una deuda
           await addDoc(collection(db, 'users', userId, 'expenses'), {
-            concept: `Pago: ${debt.name}`,
+            concept: `Pago deuda: ${debt.name}`,
             amount: monto,
             createdAt: serverTimestamp(),
+            source: 'manual',
           });
           showToast('¡Listo! Pago registrado');
         }
@@ -1111,6 +1113,21 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
         status: 'pendiente',
         createdAt: Timestamp.fromDate(fechaDate),
       });
+      if (debtType === 'me-deben') {
+        await addDoc(collection(db, 'users', userId, 'expenses'), {
+          concept: `Préstamo a ${nombre}`,
+          amount: monto,
+          createdAt: Timestamp.fromDate(fechaDate),
+          source: 'manual',
+        });
+      } else {
+        await addDoc(collection(db, 'users', userId, 'sales'), {
+          items: [{ product: `Préstamo de ${nombre}`, quantity: 1, unitPrice: monto, subtotal: monto }],
+          total: monto,
+          createdAt: Timestamp.fromDate(fechaDate),
+          source: 'manual',
+        });
+      }
       setDebtFormNombre('');
       setDebtFormMonto('');
       setDebtFormFecha(new Date().toISOString().split('T')[0]);
@@ -1168,10 +1185,10 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
       <div className={cn('flex p-1 rounded-2xl transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]')}>
         <button
-          onClick={() => { setDebtType('me-deben'); setShowDebtForm(false); }}
+          onClick={() => { setDebtType('me-deben'); setShowDebtForm(false); setShowHistory(false); }}
           className={cn(
             'flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
-            debtType === 'me-deben'
+            !showHistory && debtType === 'me-deben'
               ? isDarkMode ? 'bg-[#B8860B] text-black shadow-lg' : 'bg-white text-[#B8860B] shadow-sm'
               : 'opacity-50',
           )}
@@ -1180,16 +1197,28 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           Me deben
         </button>
         <button
-          onClick={() => { setDebtType('debo'); setShowDebtForm(false); }}
+          onClick={() => { setDebtType('debo'); setShowDebtForm(false); setShowHistory(false); }}
           className={cn(
             'flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
-            debtType === 'debo'
+            !showHistory && debtType === 'debo'
               ? isDarkMode ? 'bg-[#B8860B] text-black shadow-lg' : 'bg-white text-[#B8860B] shadow-sm'
               : 'opacity-50',
           )}
         >
           <ArrowDownRight className="w-4 h-4" />
           Debo
+        </button>
+        <button
+          onClick={() => { setShowHistory(true); setShowDebtForm(false); }}
+          className={cn(
+            'flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
+            showHistory
+              ? isDarkMode ? 'bg-[#B8860B] text-black shadow-lg' : 'bg-white text-[#B8860B] shadow-sm'
+              : 'opacity-50',
+          )}
+        >
+          <Clock className="w-4 h-4" />
+          Historial
         </button>
       </div>
 
@@ -1289,7 +1318,56 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       )}
 
       <div className="space-y-3">
-        {filteredDebts.length === 0 ? (
+        {showHistory ? (() => {
+          const historyDebts = [...debts].sort((a, b) => getDebtDate(b).getTime() - getDebtDate(a).getTime());
+          if (historyDebts.length === 0) return (
+            <div className={cn('p-10 rounded-2xl flex flex-col items-center justify-center gap-3 text-center', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+              <Clock className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />
+              <p className={cn('font-bold', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>Sin historial aún</p>
+            </div>
+          );
+          return historyDebts.map((item) => {
+            const status = item.status ?? 'pendiente';
+            const pending = item.amount - (item.amountPaid ?? 0);
+            return (
+              <button
+                key={item.id}
+                onClick={() => setSelectedDebt(item)}
+                className={cn(
+                  'w-full p-4 rounded-2xl shadow-sm border-l-4 flex items-center justify-between text-left active:scale-[0.98] transition-all',
+                  isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white',
+                  item.type === 'me-deben' ? 'border-[#B8860B]' : 'border-red-500/50',
+                  status === 'pagada' ? 'opacity-60' : '',
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="font-bold text-sm">{item.name}</p>
+                  <p className={cn('text-[11px] opacity-40 truncate')}>{item.concept} · {formatRelativeDate(getDebtDate(item))}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="text-right">
+                    <p className={cn('font-black text-base', item.type === 'me-deben' ? 'text-[#B8860B]' : 'text-red-500')}>
+                      ${item.amount.toLocaleString('es-CO')}
+                    </p>
+                    <span className={cn(
+                      'text-[9px] px-2 py-0.5 rounded-full font-black uppercase',
+                      status === 'pagada'
+                        ? 'bg-green-500/15 text-green-600'
+                        : status === 'parcial'
+                          ? 'bg-amber-100 text-amber-700'
+                          : item.type === 'me-deben'
+                            ? isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#483000]'
+                            : 'bg-red-500/10 text-red-500',
+                    )}>
+                      {status === 'pagada' ? 'SALDADA' : status === 'parcial' ? `PENDIENTE $${pending.toLocaleString('es-CO')}` : item.type === 'me-deben' ? 'A COBRAR' : 'A PAGAR'}
+                    </span>
+                  </div>
+                  <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
+                </div>
+              </button>
+            );
+          });
+        })() : filteredDebts.length === 0 ? (
           <div className={cn('p-10 rounded-2xl flex flex-col items-center justify-center gap-3 text-center', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
             <div className={cn('w-14 h-14 rounded-full flex items-center justify-center', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#f1f1ee]')}>
               <Users className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />
@@ -1383,6 +1461,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
 
     </section>
   );
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // MAIN RENDER

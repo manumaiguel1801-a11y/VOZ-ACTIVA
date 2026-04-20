@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/telegram.ts": { "maxDuration": 30 },
+    "api/whatsapp.ts": { "maxDuration": 30 }
+  }
+}

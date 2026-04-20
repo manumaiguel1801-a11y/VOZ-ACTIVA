@@ -86,6 +86,9 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [waLinkCode, setWaLinkCode] = useState<string | null>(null);
+  const [waLinking, setWaLinking] = useState(false);
+  const [waCopied, setWaCopied] = useState(false);
 
   // Photo states
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
@@ -160,6 +163,30 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
     navigator.clipboard.writeText(`/vincular ${linkCode}`).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const generateWaLinkCode = async () => {
+    if (!auth.currentUser) return;
+    setWaLinking(true);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { linkCode: { code, expiresAt } });
+      setWaLinkCode(code);
+    } catch (err) {
+      console.error('Error generating WA link code:', err);
+      alert('Error al generar el código. Intenta de nuevo.');
+    } finally {
+      setWaLinking(false);
+    }
+  };
+
+  const copyWaCode = () => {
+    if (!waLinkCode) return;
+    navigator.clipboard.writeText(`VINCULAR ${waLinkCode}`).then(() => {
+      setWaCopied(true);
+      setTimeout(() => setWaCopied(false), 2000);
     });
   };
 
@@ -238,79 +265,6 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
         </p>
       </div>
 
-      {/* Telegram Linking */}
-      {profile.telegramChatId ? (
-        <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', isDarkMode ? 'bg-green-500/10' : 'bg-green-50')}>
-          <div className="w-8 h-8 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 className="w-4 h-4 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-green-600">Telegram vinculado</p>
-            <p className={cn('text-[10px] font-medium', isDarkMode ? 'text-white/40' : 'text-black/40')}>
-              Ya puedes registrar movimientos desde Telegram
-            </p>
-          </div>
-          <Send className="w-4 h-4 text-[#229ED9] flex-shrink-0" />
-        </div>
-      ) : linkCode ? (
-        <div className={cn('rounded-2xl p-5 border-2 border-[#229ED9]/30', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-[#229ED9] flex items-center justify-center flex-shrink-0">
-              <Send className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-black text-sm">¡Casi listo!</p>
-              <p className={cn('text-[11px] font-medium', isDarkMode ? 'text-white/50' : 'text-black/50')}>
-                Envía este comando a <b>@VozActivaBot</b> en Telegram
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={copyCode}
-            className={cn(
-              'w-full flex items-center justify-between px-4 py-3 rounded-xl font-mono text-sm font-bold border-2 transition-all active:scale-95 mb-2',
-              isDarkMode ? 'bg-[#0D0D0D] border-[#229ED9]/40 text-[#229ED9]' : 'bg-[#f1f8fd] border-[#229ED9]/30 text-[#229ED9]',
-            )}
-          >
-            <span>/vincular {linkCode}</span>
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 opacity-60" />}
-          </button>
-          <p className={cn('text-[10px] font-medium text-center', isDarkMode ? 'text-white/30' : 'text-black/30')}>
-            Código válido 10 minutos · Toca para copiar
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-2xl overflow-hidden shadow-lg">
-          <div className="bg-gradient-to-br from-[#229ED9] to-[#1a7fb5] p-5">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                <Send className="w-7 h-7 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-black text-white text-base leading-tight">Registra sin abrir la app</p>
-                <p className="text-white/80 text-xs font-medium mt-1 leading-snug">
-                  Escribe <i>"vendí 3 almuerzos a 12 mil"</i> en Telegram y lo registramos automáticamente.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={generateLinkCode}
-              disabled={linking}
-              className="mt-4 w-full h-11 bg-white text-[#1a7fb5] rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 shadow-md"
-            >
-              <Send className="w-4 h-4" />
-              {linking ? 'Generando código...' : 'Vincular con Telegram'}
-            </button>
-          </div>
-          <div className={cn('px-5 py-3 flex items-center gap-2', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f8fd]')}>
-            <div className="w-1.5 h-1.5 rounded-full bg-[#229ED9]" />
-            <p className={cn('text-[10px] font-bold', isDarkMode ? 'text-white/40' : 'text-[#229ED9]/70')}>
-              Gratis · Sin instalar nada extra · Funciona en Colombia
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Profile fields */}
       <div className={cn('rounded-2xl p-6 space-y-6 transition-colors duration-500', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
         <div className="space-y-4">
@@ -353,6 +307,203 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
             Cerrar Sesión
           </button>
         </div>
+      </div>
+
+      {/* Conectar canales */}
+      <div className="space-y-2">
+        <p className={cn('text-[10px] uppercase tracking-widest font-black px-1 opacity-40', isDarkMode ? 'text-white' : 'text-black')}>
+          Canales de registro
+        </p>
+
+        {/* WhatsApp */}
+        {profile.whatsappPhone ? (
+          <div className={cn('flex items-center gap-4 p-4 rounded-2xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+            <div className="w-11 h-11 rounded-2xl bg-[#25D366] flex items-center justify-center flex-shrink-0">
+              <MessageSquare className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-sm">WhatsApp</p>
+              <p className="text-[11px] text-green-500 font-bold">● Vinculado — ya puedes registrar desde WhatsApp</p>
+            </div>
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+          </div>
+        ) : waLinkCode ? (
+          <div className={cn('rounded-2xl overflow-hidden shadow-lg')}>
+            <div className="bg-gradient-to-br from-[#25D366] to-[#128C7E] p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <MessageSquare className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-black text-white text-sm">¡Código listo!</p>
+                  <p className="text-white/80 text-[11px] font-medium">Sigue estos pasos para terminar:</p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                {[
+                  'Abre WhatsApp en tu celular',
+                  'Busca el contacto de Voz-Activa',
+                  'Copia el código de abajo y envíalo tal cual',
+                  '¡Listo! Ya puedes registrar tus ventas por WhatsApp',
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] font-black text-white">{i + 1}</span>
+                    </div>
+                    <p className="text-white/90 text-xs font-medium leading-snug">{step}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={copyWaCode}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-mono text-sm font-bold bg-white/15 border border-white/30 text-white transition-all active:scale-95 mb-1"
+              >
+                <span>VINCULAR {waLinkCode}</span>
+                {waCopied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4 opacity-70" />}
+              </button>
+              <p className="text-white/50 text-[10px] text-center font-medium">Código válido 10 minutos · Toca para copiar</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden shadow-lg">
+            <div className="bg-gradient-to-br from-[#25D366] to-[#128C7E] p-5">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <MessageSquare className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-white text-base leading-tight">Registra desde WhatsApp</p>
+                  <p className="text-white/80 text-xs font-medium mt-1 leading-snug">
+                    Escribe <i>"vendí 3 almuerzos a 12 mil"</i> por WhatsApp y lo anotamos al instante.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                {[
+                  'Toca el botón de abajo para generar tu código',
+                  'Cópialo y envíaselo al bot de WhatsApp',
+                  'Ya puedes registrar ventas y gastos por chat',
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] font-black text-white">{i + 1}</span>
+                    </div>
+                    <p className="text-white/90 text-xs font-medium leading-snug">{step}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={generateWaLinkCode}
+                disabled={waLinking}
+                className="w-full h-11 bg-white text-[#128C7E] rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 shadow-md"
+              >
+                <MessageSquare className="w-4 h-4" />
+                {waLinking ? 'Generando código...' : 'Vincular con WhatsApp'}
+              </button>
+            </div>
+            <div className={cn('px-5 py-3 flex items-center gap-2', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f0fdf4]')}>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#25D366]" />
+              <p className={cn('text-[10px] font-bold', isDarkMode ? 'text-white/40' : 'text-[#25D366]/70')}>
+                Gratis · Sin instalar nada extra · Funciona en Colombia
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Telegram */}
+        {profile.telegramChatId ? (
+          <div className={cn('flex items-center gap-4 p-4 rounded-2xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+            <div className="w-11 h-11 rounded-2xl bg-[#229ED9] flex items-center justify-center flex-shrink-0">
+              <Send className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-sm">Telegram</p>
+              <p className="text-[11px] text-green-500 font-bold">● Vinculado — ya puedes registrar desde Telegram</p>
+            </div>
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+          </div>
+        ) : linkCode ? (
+          <div className="rounded-2xl overflow-hidden shadow-lg">
+            <div className="bg-gradient-to-br from-[#229ED9] to-[#1a7fb5] p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Send className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-black text-white text-sm">¡Código listo!</p>
+                  <p className="text-white/80 text-[11px] font-medium">Sigue estos pasos para terminar:</p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                {[
+                  'Abre Telegram en tu celular',
+                  'Busca el bot @VozActivaBot',
+                  'Copia el código de abajo y envíalo tal cual',
+                  '¡Listo! Ya puedes registrar tus ventas por Telegram',
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] font-black text-white">{i + 1}</span>
+                    </div>
+                    <p className="text-white/90 text-xs font-medium leading-snug">{step}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={copyCode}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-mono text-sm font-bold bg-white/15 border border-white/30 text-white transition-all active:scale-95 mb-1"
+              >
+                <span>/vincular {linkCode}</span>
+                {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4 opacity-70" />}
+              </button>
+              <p className="text-white/50 text-[10px] text-center font-medium">Código válido 10 minutos · Toca para copiar</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden shadow-lg">
+            <div className="bg-gradient-to-br from-[#229ED9] to-[#1a7fb5] p-5">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Send className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-white text-base leading-tight">Registra desde Telegram</p>
+                  <p className="text-white/80 text-xs font-medium mt-1 leading-snug">
+                    Escribe <i>"vendí 3 almuerzos a 12 mil"</i> en Telegram y lo anotamos al instante.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                {[
+                  'Toca el botón de abajo para generar tu código',
+                  'Abre Telegram y busca @VozActivaBot',
+                  'Envía el código y ya quedas vinculado',
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] font-black text-white">{i + 1}</span>
+                    </div>
+                    <p className="text-white/90 text-xs font-medium leading-snug">{step}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={generateLinkCode}
+                disabled={linking}
+                className="w-full h-11 bg-white text-[#1a7fb5] rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 shadow-md"
+              >
+                <Send className="w-4 h-4" />
+                {linking ? 'Generando código...' : 'Vincular con Telegram'}
+              </button>
+            </div>
+            <div className={cn('px-5 py-3 flex items-center gap-2', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f8fd]')}>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#229ED9]" />
+              <p className={cn('text-[10px] font-bold', isDarkMode ? 'text-white/40' : 'text-[#229ED9]/70')}>
+                Gratis · Sin instalar nada extra · Funciona en Colombia
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* PQRS */}

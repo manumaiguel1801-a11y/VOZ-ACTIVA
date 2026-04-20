@@ -17,6 +17,7 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  regularUnitPrice?: number; // precio de inventario cuando se vendió con descuento
 }
 
 export interface Sale {
@@ -24,7 +25,7 @@ export interface Sale {
   items: SaleItem[];
   total: number;
   createdAt: any;
-  source?: 'manual' | 'chat' | 'telegram' | 'camara';
+  source?: 'manual' | 'chat' | 'telegram' | 'whatsapp' | 'camara';
   // legacy fields for old single-product sales
   product?: string;
   quantity?: number;
@@ -58,7 +59,7 @@ export interface Expense {
   amount: number;
   createdAt: any;
   items?: ExpenseItem[];
-  source?: 'manual' | 'chat' | 'telegram' | 'camara';
+  source?: 'manual' | 'chat' | 'telegram' | 'whatsapp' | 'camara';
 }
 
 export interface Debt {
@@ -99,6 +100,13 @@ export function getMargen(p: InventoryProduct): number | null {
   return Math.round(((venta - compra) / compra) * 100);
 }
 
+export interface ScoreHistoryEntry {
+  id?: string;
+  score: number;
+  weekKey: string;
+  recordedAt: any;
+}
+
 export interface UserProfile {
   firstName: string;
   lastName: string;
@@ -109,5 +117,8 @@ export interface UserProfile {
   photoURL?: string;
   createdAt: any; // Timestamp
   telegramChatId?: string;
+  whatsappPhone?: string;
   linkCode?: { code: string; expiresAt: any };
+  lastScoreCategory?: string;
+  verificationCode?: { code: string; expiresAt: any };
 }

@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import {
   Download,
   Lock,
   TrendingUp,
+  TrendingDown,
   CreditCard,
   Users,
   Package,
@@ -12,20 +13,33 @@ import {
   ShieldCheck,
   Clock,
   BarChart2,
-  Share2,
   CalendarDays,
   ArrowUpCircle,
-  ShoppingBag,
+  Minus,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
+import { collection, addDoc, getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { cn } from '../lib/utils';
-import { Sale, Expense, Debt, UserProfile } from '../types';
+import { Sale, Expense, Debt, UserProfile, ScoreHistoryEntry } from '../types';
 import {
   calculateScore, getScoreLabel, getScoreColor,
   getBusinessAgeDays, formatBusinessAge,
   getTopProducts, getMonthlyProjection, getNextLevel,
+  calculateScoreTrend,
 } from '../services/scoringService';
 import { generatePassportPDF } from '../services/pdfService';
+
+const CATEGORY_ORDER = ['Riesgo alto', 'En construcción', 'Aceptable', 'Bueno', 'Excelente'];
+
+function getWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
 
 interface Props {
   isDarkMode: boolean;
@@ -33,6 +47,7 @@ interface Props {
   expenses: Expense[];
   debts: Debt[];
   profile: UserProfile | null;
+  userId: string;
 }
 
 interface FactorCard {
@@ -58,8 +73,13 @@ interface Logro {
   unlocked: boolean;
 }
 
-export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Props) => {
-  const [isGenerating, setIsGenerating] = React.useState(false);
+export const PassportView = ({ isDarkMode, sales, expenses, debts, profile, userId }: Props) => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [scoreHistory, setScoreHistory] = useState<ScoreHistoryEntry[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+  const historyLoaded = useRef(false);
+  const lastAlertedCategory = useRef<string | null>(null);
 
   const breakdown = useMemo(
     () => calculateScore(sales, expenses, debts),
@@ -71,15 +91,63 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
   const scoreLabel = getScoreLabel(scoreFinal);
 
   const ageDays = useMemo(() => getBusinessAgeDays(sales, expenses, debts), [sales, expenses, debts]);
+  const scoreTrend = useMemo(() => calculateScoreTrend(sales, expenses, debts), [sales, expenses, debts]);
   const topProducts = useMemo(() => getTopProducts(sales), [sales]);
   const monthlyProjection = useMemo(() => getMonthlyProjection(sales), [sales]);
   const nextLevel = useMemo(() => getNextLevel(scoreFinal), [scoreFinal]);
+
+  // Historial del score + alerta de categoría
+  useEffect(() => {
+    if (!userId || !hasEnoughData || historyLoaded.current) return;
+    historyLoaded.current = true;
+
+    const run = async () => {
+      try {
+        const histRef = collection(db, 'users', userId, 'scoreHistory');
+
+        // Cargar últimos 12 snapshots
+        const snap = await getDocs(query(histRef, orderBy('recordedAt', 'asc'), limit(12)));
+        const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScoreHistoryEntry));
+        setScoreHistory(entries);
+
+        // Guardar snapshot si esta semana no tiene uno
+        const thisWeek = getWeekKey(new Date());
+        if (!entries.some((e) => e.weekKey === thisWeek)) {
+          await addDoc(histRef, { score: scoreFinal, weekKey: thisWeek, recordedAt: serverTimestamp() });
+        }
+
+        // Alerta si la categoría mejoró
+        const prevCategory = profile?.lastScoreCategory;
+        const prevIdx = CATEGORY_ORDER.indexOf(prevCategory ?? '');
+        const currIdx = CATEGORY_ORDER.indexOf(scoreLabel);
+        if (currIdx > prevIdx && prevIdx !== -1 && lastAlertedCategory.current !== scoreLabel) {
+          lastAlertedCategory.current = scoreLabel;
+          setToast(`¡Subiste a ${scoreLabel}! 🎉`);
+          setTimeout(() => setToast(null), 4000);
+        }
+
+        // Persistir categoría actual si cambió
+        if (prevCategory !== scoreLabel) {
+          await updateDoc(doc(db, 'users', userId), { lastScoreCategory: scoreLabel });
+        }
+      } catch (e) {
+        console.error('Score history error:', e);
+      }
+    };
+    run();
+  }, [userId, hasEnoughData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDownload = async () => {
     if (!hasEnoughData) return;
     setIsGenerating(true);
     try {
-      await generatePassportPDF(profile, sales, expenses, debts);
+      const { blob, filename } = await generatePassportPDF(profile, sales, expenses, debts, userId, window.location.origin);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
     } finally {
       setIsGenerating(false);
     }
@@ -87,23 +155,31 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
 
   const handleShare = async () => {
     if (!hasEnoughData) return;
-    const label = getScoreLabel(scoreFinal);
-    const text = [
-      '📊 Mi Pasaporte Financiero Voz-Activa',
-      `🏆 Score: ${scoreFinal}/950 — ${label}`,
-      `📅 Antigüedad del negocio: ${formatBusinessAge(ageDays)}`,
-      `💰 Proyección mensual: $${monthlyProjection.toLocaleString('es-CO')}`,
-      '',
-      'Generado con Voz-Activa — Scoring Crediticio Alternativo',
-    ].join('\n');
-
+    setIsSharing(true);
     try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Mi Pasaporte Financiero Voz-Activa', text });
+      const { blob, filename } = await generatePassportPDF(profile, sales, expenses, debts, userId, window.location.origin);
+      const file = new File([blob], filename, { type: 'application/pdf' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Mi Pasaporte Financiero Voz-Activa' });
+      } else if (navigator.share) {
+        await navigator.share({
+          title: 'Mi Pasaporte Financiero Voz-Activa',
+          text: `Mi score es ${scoreFinal}/950 — ${scoreLabel}. Generado con Voz-Activa.`,
+        });
       } else {
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+        // Fallback: descargar el PDF directamente
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
       }
     } catch (_) { /* share cancelado */ }
+    finally {
+      setIsSharing(false);
+    }
   };
 
   // Donut chart escala colombiana 150–950
@@ -221,8 +297,22 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
     ];
   }, [sales, expenses, debts, breakdown, scoreFinal]);
 
+  const historyChartData = scoreHistory.map((h) => ({
+    score: h.score,
+    semana: h.recordedAt?.toDate
+      ? h.recordedAt.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })
+      : '—',
+  }));
+
   return (
     <div className="space-y-10 pb-4">
+
+      {/* Toast de categoría */}
+      {toast && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-xl bg-[#1A1A1A] text-[#FFD700] border border-[#B8860B]/40 whitespace-nowrap">
+          {toast}
+        </div>
+      )}
 
       {/* ── Hero: donut + score ── */}
       <section className="flex flex-col items-center pt-4">
@@ -257,6 +347,26 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
             <span className={cn('text-xs font-bold mt-1', isDarkMode ? 'text-[#FDFBF0]/50' : 'text-[#5b5c5a]')}>
               / 950
             </span>
+            {/* Tendencia */}
+            {hasEnoughData && scoreTrend.trend !== 'stable' && (
+              <div className={cn(
+                'flex items-center gap-0.5 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-black',
+                scoreTrend.trend === 'up'
+                  ? 'bg-green-500/15 text-green-500'
+                  : 'bg-red-400/15 text-red-400',
+              )}>
+                {scoreTrend.trend === 'up'
+                  ? <TrendingUp className="w-3 h-3" />
+                  : <TrendingDown className="w-3 h-3" />}
+                {scoreTrend.trend === 'up' ? '+' : ''}{scoreTrend.delta} pts
+              </div>
+            )}
+            {hasEnoughData && scoreTrend.trend === 'stable' && scoreTrend.delta === 0 && (
+              <div className={cn('flex items-center gap-0.5 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-black', isDarkMode ? 'bg-white/10 text-white/40' : 'bg-black/5 text-black/30')}>
+                <Minus className="w-3 h-3" />
+                Estable
+              </div>
+            )}
           </div>
         </div>
 
@@ -359,6 +469,45 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
         </div>
       </section>
 
+      {/* ── Evolución del score ── */}
+      {historyChartData.length >= 2 && (
+        <section className="space-y-3">
+          <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-xl px-1">Evolución de tu score</h3>
+          <div className={cn('rounded-2xl p-4', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={historyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <XAxis
+                  dataKey="semana"
+                  tick={{ fontSize: 10, fill: isDarkMode ? '#FDFBF0' : '#5b5c5a', opacity: 0.6 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis domain={[150, 950]} hide />
+                <Tooltip
+                  contentStyle={{
+                    background: isDarkMode ? '#1A1A1A' : '#fff',
+                    border: '1px solid #B8860B44',
+                    borderRadius: 12,
+                    fontSize: 12,
+                    color: isDarkMode ? '#FDFBF0' : '#1A1A1A',
+                  }}
+                  formatter={(v: number) => [`${v} pts`, 'Score']}
+                  labelStyle={{ color: '#B8860B', fontWeight: 700 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="score"
+                  stroke="#DAA520"
+                  strokeWidth={2.5}
+                  dot={{ fill: '#B8860B', r: 4, strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#FFD700' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
       {/* ── Top productos ── */}
       {topProducts.length > 0 && (
         <section className="space-y-3">
@@ -388,35 +537,34 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile }: Pr
         </section>
       )}
 
-      {/* ── Acciones: descargar + compartir ── */}
-      <div className="flex gap-3">
-        <button
-          onClick={handleDownload}
-          disabled={!hasEnoughData || isGenerating}
-          className={cn(
-            'flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl font-bold text-sm shadow-lg transition-all active:scale-95',
-            hasEnoughData
-              ? 'bg-gradient-to-br from-[#B8860B] to-[#FFD700] text-black'
-              : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60',
-          )}
-        >
-          <Download className="w-5 h-5" />
-          {isGenerating ? 'Generando...' : 'Descargar PDF'}
-        </button>
-        <button
-          onClick={handleShare}
-          disabled={!hasEnoughData}
-          className={cn(
-            'h-14 px-5 flex items-center justify-center gap-2 rounded-2xl font-bold text-sm transition-all active:scale-95',
-            hasEnoughData
-              ? isDarkMode ? 'bg-[#1A1A1A] text-[#FFD700]' : 'bg-white text-[#B8860B] shadow-sm'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60',
-          )}
-        >
-          <Share2 className="w-5 h-5" />
-          Compartir
-        </button>
-      </div>
+
+      {/* ── Accede a crédito ── */}
+      {hasEnoughData && scoreFinal >= 600 && (
+        <div className={cn('rounded-2xl p-5 space-y-4', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+          <div className="flex items-start gap-3">
+            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5', isDarkMode ? 'bg-[#FFD700]/10 text-[#FFD700]' : 'bg-[#FFF8DC] text-[#B8860B]')}>
+              <CreditCard className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-black text-sm leading-snug">¡Tu score abre puertas al crédito!</p>
+              <p className={cn('text-xs leading-snug', isDarkMode ? 'text-[#FDFBF0]/50' : 'text-[#5b5c5a]')}>
+                Con {scoreFinal} puntos ya tienes un historial financiero real que puedes presentar ante cualquier microfinanciera, cooperativa o banco para explorar opciones de crédito y hacer crecer tu negocio.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleDownload}
+            disabled={isGenerating}
+            className="w-full h-12 flex items-center justify-center gap-2 rounded-xl font-black text-sm bg-gradient-to-br from-[#B8860B] to-[#FFD700] text-black active:scale-95 transition-all shadow-md"
+          >
+            <Download className="w-4 h-4" />
+            {isGenerating ? 'Generando...' : 'Descargar mi Pasaporte Financiero'}
+          </button>
+          <p className={cn('text-[10px] text-center leading-snug', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/50')}>
+            Presenta este PDF como evidencia alternativa de capacidad de pago
+          </p>
+        </div>
+      )}
 
       {/* ── Logros ── */}
       <section className="space-y-4">
