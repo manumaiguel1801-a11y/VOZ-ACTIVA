@@ -418,6 +418,7 @@ async function saveMovement(
       await userRef.collection('expenses').add({
         concept: `Préstamo a ${name}`,
         amount,
+        items: [{ product: `Préstamo a ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }],
         createdAt: now,
         source,
       });
@@ -436,7 +437,7 @@ async function saveMovement(
         source,
       });
       await userRef.collection('sales').add({
-        items: [{ product: `Préstamo de ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }],
+        concept: `Préstamo de ${name}`,
         total: amount,
         createdAt: now,
         source,
@@ -478,13 +479,31 @@ export async function handleDebtPayment(
   }
 
   const debtType = type === 'pago-deuda-debo' ? 'debo' : 'me-deben';
-  const nameLower = debtorName.toLowerCase();
+  const nameNorm = normalizeStr(debtorName);
 
-  const findByName = (docs: QueryDocumentSnapshot[]) =>
-    docs.find(d => {
-      const name = ((d.data().name as string) ?? '').toLowerCase();
-      return name.includes(nameLower) || nameLower.includes(name);
+  const findByName = (docs: QueryDocumentSnapshot[]) => {
+    // 1. Exact normalized match
+    const exact = docs.find(d => normalizeStr((d.data().name as string) ?? '') === nameNorm);
+    if (exact) return exact;
+    // 2. Substring inclusion (handles partial names / compound names)
+    const sub = docs.find(d => {
+      const n = normalizeStr((d.data().name as string) ?? '');
+      return n.includes(nameNorm) || nameNorm.includes(n);
     });
+    if (sub) return sub;
+    // 3. Any word in the query matches any word in the stored name
+    const queryWords = nameNorm.split(/\s+/).filter(w => w.length > 1);
+    const wordMatch = docs.find(d => {
+      const storedWords = normalizeStr((d.data().name as string) ?? '').split(/\s+/);
+      return queryWords.some(qw => storedWords.some(sw => sw.includes(qw) || qw.includes(sw)));
+    });
+    if (wordMatch) return wordMatch;
+    // 4. Fuzzy similarity (typos, diminutives)
+    return docs.find(d => {
+      const n = normalizeStr((d.data().name as string) ?? '');
+      return strSimilarity(nameNorm, n) > 0.75;
+    }) ?? null;
+  };
 
   const activeSnap = await userRef.collection('debts')
     .where('type', '==', debtType)
@@ -531,6 +550,7 @@ export async function handleDebtPayment(
     await userRef.collection('expenses').add({
       concept: `Pago deuda: ${debtorName}`,
       amount: effectivePay,
+      items: [{ product: `Pago deuda: ${debtorName}`, quantity: 1, unitPrice: effectivePay, subtotal: effectivePay }],
       createdAt: now,
       source,
     });
@@ -766,6 +786,7 @@ export async function handlePendingState(
         await userRef.collection('expenses').add({
           concept: `Pago deuda: ${debtorName}`,
           amount,
+          items: [{ product: `Pago deuda: ${debtorName}`, quantity: 1, unitPrice: amount, subtotal: amount }],
           createdAt: now,
           source: pendingState.source,
         });
@@ -795,10 +816,10 @@ export async function handlePendingState(
         .where('status', 'in', ['pendiente', 'parcial'])
         .get();
 
-      const nameLower2 = debtorName.toLowerCase();
+      const nameNorm2 = normalizeStr(debtorName);
       const matchDoc = debtsSnap.docs.find(d => {
-        const name = ((d.data().name as string) ?? '').toLowerCase();
-        return name.includes(nameLower2) || nameLower2.includes(name);
+        const n = normalizeStr((d.data().name as string) ?? '');
+        return n === nameNorm2 || n.includes(nameNorm2) || nameNorm2.includes(n) || strSimilarity(n, nameNorm2) > 0.75;
       });
 
       if (!matchDoc) {
@@ -811,7 +832,7 @@ export async function handlePendingState(
       await matchDoc.ref.update({ amountPaid: prevPaid + amountOwed, status: 'pagada', paidAt: now });
 
       if (debtType === 'pago-deuda-debo') {
-        await userRef.collection('expenses').add({ concept: `Pago deuda: ${debtorName}`, amount: amountOwed, createdAt: now, source: pendingState.source });
+        await userRef.collection('expenses').add({ concept: `Pago deuda: ${debtorName}`, amount: amountOwed, items: [{ product: `Pago deuda: ${debtorName}`, quantity: 1, unitPrice: amountOwed, subtotal: amountOwed }], createdAt: now, source: pendingState.source });
         await send(`✅ Pagaste $${amountOwed.toLocaleString('es-CO')} a *${debtorName}*. ¡Deuda saldada!`);
       } else {
         await userRef.collection('sales').add({

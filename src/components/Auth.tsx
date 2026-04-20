@@ -45,7 +45,7 @@ function mensajeError(codigo: string): string {
 
 export const Auth = ({ isDarkMode }: AuthProps) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [isManual, setIsManual] = useState(false);
+  const [noEmail, setNoEmail] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generatedEmail, setGeneratedEmail] = useState<string | null>(null);
@@ -69,30 +69,25 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        // Registration
-        let finalEmail = email;
-        if (isManual) {
-          finalEmail = `${idNumber}@vozactiva.com`;
-        }
+        const finalEmail = noEmail ? `${idNumber}@vozactiva.com` : email;
 
         const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, password);
         const user = userCredential.user;
 
-        // Save profile to Firestore
         await setDoc(doc(db, 'users', user.uid), {
           firstName,
           lastName,
           idNumber,
           phone,
           birthDate,
-          email: isManual ? null : email,
+          email: noEmail ? null : email,
           createdAt: serverTimestamp()
         });
 
-        if (isManual) {
+        if (noEmail) {
           setGeneratedEmail(finalEmail);
           setLoading(false);
-          return; // Hold — let the popup close before Firebase triggers the auth state change
+          return;
         }
       }
     } catch (err: any) {
@@ -205,7 +200,7 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
         {/* Form */}
         <form onSubmit={handleAuth} className="space-y-5 flex-1">
           <h2 className="text-2xl font-bold mb-6">
-            {isLogin ? 'Iniciar Sesión' : (isManual ? 'Registro Manual' : 'Crear Cuenta')}
+            {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
           </h2>
 
           {!isLogin && (
@@ -257,23 +252,42 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
           )}
 
           <div className="space-y-4">
-            {(!isManual || isLogin) && (
-              <Input 
-                icon={<Mail />} 
-                placeholder="Correo Electrónico" 
+            <div className="space-y-2">
+              <Input
+                icon={<Mail />}
+                placeholder="Correo Electrónico"
                 type="email"
-                value={email} 
-                onChange={setEmail} 
+                value={email}
+                onChange={setEmail}
                 isDarkMode={isDarkMode}
-                required
+                required={!noEmail}
+                disabled={noEmail}
               />
-            )}
-            <Input 
-              icon={<Lock />} 
-              placeholder="Contraseña" 
+              {!isLogin && (
+                <label className="flex items-center gap-2.5 px-1 cursor-pointer select-none w-fit">
+                  <div
+                    onClick={() => { setNoEmail(v => !v); setEmail(''); }}
+                    className={cn(
+                      'w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all flex-shrink-0',
+                      noEmail
+                        ? 'bg-[#B8860B] border-[#B8860B]'
+                        : isDarkMode ? 'border-white/30 bg-transparent' : 'border-black/20 bg-white'
+                    )}
+                  >
+                    {noEmail && <X className="w-3 h-3 text-black" strokeWidth={3} />}
+                  </div>
+                  <span className={cn('text-xs font-medium', isDarkMode ? 'text-white/60' : 'text-black/50')}>
+                    No tengo correo electrónico
+                  </span>
+                </label>
+              )}
+            </div>
+            <Input
+              icon={<Lock />}
+              placeholder="Contraseña"
               type="password"
-              value={password} 
-              onChange={setPassword} 
+              value={password}
+              onChange={setPassword}
               isDarkMode={isDarkMode}
               required
             />
@@ -301,23 +315,15 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
           {isLogin ? (
             <>
               <p className="opacity-60 font-medium">¿No tienes cuenta?</p>
-              <div className="flex flex-col gap-3">
-                <button 
-                  onClick={() => { setIsLogin(false); setIsManual(false); }}
-                  className="text-[#B8860B] font-bold hover:underline"
-                >
-                  Registrarse con Correo
-                </button>
-                <button 
-                  onClick={() => { setIsLogin(false); setIsManual(true); }}
-                  className="text-[#B8860B] font-bold hover:underline"
-                >
-                  Registro Manual (Sin Correo)
-                </button>
-              </div>
+              <button
+                onClick={() => { setIsLogin(false); setNoEmail(false); }}
+                className="text-[#B8860B] font-bold hover:underline"
+              >
+                Crear Cuenta
+              </button>
             </>
           ) : (
-            <button 
+            <button
               onClick={() => setIsLogin(true)}
               className="flex items-center justify-center gap-2 text-[#B8860B] font-bold mx-auto hover:underline"
             >
@@ -332,38 +338,40 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
   );
 };
 
-const Input = ({ 
-  icon, 
-  placeholder, 
-  value, 
-  onChange, 
-  type = "text", 
+const Input = ({
+  icon,
+  placeholder,
+  value,
+  onChange,
+  type = "text",
   isDarkMode,
-  required = false
-}: { 
-  icon: React.ReactNode, 
-  placeholder: string, 
-  value: string, 
+  required = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode,
+  placeholder: string,
+  value: string,
   onChange: (v: string) => void,
   type?: string,
   isDarkMode: boolean,
-  required?: boolean
+  required?: boolean,
+  disabled?: boolean,
 }) => (
   <div className={cn(
     "relative flex items-center h-14 rounded-xl transition-all duration-300",
-    isDarkMode
-      ? "bg-[#1A1A1A]"
-      : "bg-white shadow-sm"
+    isDarkMode ? "bg-[#1A1A1A]" : "bg-white shadow-sm",
+    disabled && "opacity-40"
   )}>
     <div className="pl-4 text-[#B8860B]">
       {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
     </div>
-    <input 
+    <input
       type={type}
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       required={required}
+      disabled={disabled}
       className={cn(
         "flex-1 bg-transparent border-none outline-none focus:ring-0 px-4 font-medium",
         isDarkMode ? "text-[#FDFBF0] placeholder:text-[#FDFBF0]/30" : "text-[#2e2f2d] placeholder:text-[#5b5c5a]/50"

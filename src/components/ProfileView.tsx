@@ -380,15 +380,23 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
               </div>
               <div className="space-y-2 mb-4">
                 {[
-                  'Toca el botón de abajo para generar tu código',
-                  'Cópialo y envíaselo al bot de WhatsApp',
-                  'Ya puedes registrar ventas y gastos por chat',
+                  { text: 'Toca el botón de abajo para generar tu código' },
+                  { text: 'Cópialo y envíalo a ', link: { href: 'https://wa.me/573108868970', label: 'este número' }, after: ' — agrégalo como Voz Activa Bot o como prefieras' },
+                  { text: '¡Listo! Ya puedes registrar ventas y gastos por chat' },
                 ].map((step, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <span className="text-[10px] font-black text-white">{i + 1}</span>
                     </div>
-                    <p className="text-white/90 text-xs font-medium leading-snug">{step}</p>
+                    <p className="text-white/90 text-xs font-medium leading-snug">
+                      {step.text}
+                      {step.link && (
+                        <>
+                          <a href={step.link.href} target="_blank" rel="noopener noreferrer" className="underline font-black text-white">{step.link.label}</a>
+                          {step.after}
+                        </>
+                      )}
+                    </p>
                   </div>
                 ))}
               </div>
