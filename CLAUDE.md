@@ -20,7 +20,9 @@ There is no test framework configured in this project.
 Copy `.env.example` to `.env.local` and set:
 - `GEMINI_API_KEY` — required for both the in-app chat and the serverless bot functions
 
-Firebase client config is loaded from `firebase-applet-config.json` (not an env variable). The Firestore database ID is read from that file via `firebaseConfig.firestoreDatabaseId`.
+**Important:** `GEMINI_API_KEY` is injected into the client bundle at **build time** via Vite's `define` option. Changing it in `.env.local` requires a full rebuild — a running dev server won't pick up the new value.
+
+Firebase client config is loaded from `firebase-applet-config.json` (not an env variable). The Firestore database ID is read from that file via `firebaseConfig.firestoreDatabaseId`. This file is tracked in git and managed by AI Studio — do not create it manually.
 
 Required env vars for Vercel serverless functions (`api/`):
 - `FIREBASE_SERVICE_ACCOUNT` (full JSON string of Firebase Admin service account)
@@ -86,18 +88,25 @@ The `source` field on sales/expenses tracks where the movement came from: `'manu
 - `pago-deuda-debo` (paying a debt) → writes to `expenses`
 - `cobro-deuda-me-deben` (collecting a debt) → writes to `sales`
 
-Firestore rules (`firestore.rules`): users read/write only their own subtree. `passportVerifications/{code}` is publicly readable.
+Firestore rules (`firestore.rules`): users read/write only their own subtree. `passportVerifications/{code}` is publicly readable. There is also a `fiados` subcollection in the rules — it is legacy/unused; debt tracking was migrated to `debts/`.
+
+Firebase Storage rules (`storage.rules`): profile photos at `users/{userId}/profile.jpg`, auth-required, images only, 5 MB limit.
 
 ### Serverless API (Vercel)
 
 `api/` contains Vercel serverless functions (30s max duration per `vercel.json`):
 - `api/whatsapp.ts` — WhatsApp Business webhook. GET verifies the webhook token. POST: handles `vincular <code>` for account linking, then routes to `processMessage` (normal) or `handlePendingState` (multi-turn in progress).
 - `api/telegram.ts` — Telegram Bot webhook, same architecture as WhatsApp.
+- `api/verify.ts` — Passport verification endpoint. GET: publicly returns passport score/name/expiry for a given code (used by `?verificar=CODE` flow). POST: requires Bearer token, writes to `passportVerifications/` with a 90-day expiry.
 - `api/_lib/processMessage.ts` — Shared business logic for both bots. Calls Gemini, maps movement types to Firestore writes, handles inventory lookups (fuzzy name match), debt payments, and multi-turn state. Returns a `PendingState` when more input is needed.
 - `api/_lib/gemini.ts` — **Server-side** Gemini client with structured JSON output via `responseSchema`.
 - `api/_lib/whatsapp-bot.ts` / `api/_lib/telegram-bot.ts` — Thin send helpers.
 
-Bot conversation history is capped at `MAX_HISTORY = 10` entries (5 turns) per user per channel and stored on the user doc.
+Firebase Admin SDK init in each serverless function uses a `getApps().length > 0` guard to avoid re-initialization on function reuse (warm starts).
+
+`vercel.json` rewrites all non-API routes (`/((?!api/).*)`) to `/index.html` for SPA routing.
+
+Bot conversation history is trimmed to the last `MAX_HISTORY = 10` entries (5 user→bot turns) via `slice(-MAX_HISTORY)` after each message, stored on the user doc.
 
 **Bot linking flow:** User taps "Vincular bot" in ProfileView → app writes a `linkCode: { code, expiresAt }` to the user doc → user sends `vincular <code>` to the WhatsApp or Telegram bot → webhook looks up the user by code → stores `whatsappPhone` or `telegramChatId` on the user doc. WhatsApp deduplicates messages using `whatsappLastMsgId` stored on the user doc (same message arriving twice is dropped).
 
@@ -125,6 +134,10 @@ The server-side system prompt uses a "mirror tone" rule: the bot must match the 
 - Calidad de datos (0–10): activity frequency and description quality
 
 Requires ≥ 5 total records (`hasEnoughData`) before showing a score. `pdfService.ts` uses these results to generate a downloadable business passport PDF.
+
+### Feedback / Third-party
+
+`SuggestionsModal.tsx` sends user feedback via `@emailjs/browser` (public EmailJS credentials, client-side only).
 
 ### Styling
 

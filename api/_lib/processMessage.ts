@@ -30,6 +30,10 @@ export function parseUserPrice(text: string): number | null {
   return null;
 }
 
+export function looksLikeNewCommand(text: string): boolean {
+  return /\b(vend[íi]|gast[eé]|compr[eé]|me debe|le debo|pagu[eé]|cobr[eé]|sagu[eé]|saq[uú][eé]|traje|repuse|recib[íi]|prest[eé]|abono|saldo|debo|deben)\b/i.test(text);
+}
+
 export function isAfirmativo(text: string): boolean {
   return /^(si\b|sí\b|yes\b|claro|dale|obvio|afirmativo|simon\b|simón\b|aja\b|ajá\b|ok\b|okey|sip\b|seguro|por supuesto)/i.test(text.trim());
 }

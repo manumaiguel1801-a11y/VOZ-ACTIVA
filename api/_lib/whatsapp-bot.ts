@@ -44,4 +44,6 @@ export const MSG_HELP = `📋 *¿Qué puedo registrar?*
 📦 *Compras:* "compré 50 gaseosas"
 🤝 *Fiados:* "Pedro me debe 20 mil" / "le debo 80 mil al proveedor"
 
-Registra exactamente como hablas — sin formatos especiales.`;
+Registra exactamente como hablas — sin formatos especiales.
+
+_CANCELAR — cancela cualquier operación en curso_`;

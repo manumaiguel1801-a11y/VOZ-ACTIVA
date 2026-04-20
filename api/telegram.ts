@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { processMessage, handlePendingState, type HistoryEntry, type PendingState } from './_lib/processMessage.js';
+import { processMessage, handlePendingState, looksLikeNewCommand, type HistoryEntry, type PendingState } from './_lib/processMessage.js';
 import { sendTelegram, MSG_NOT_LINKED, MSG_HELP } from './_lib/telegram-bot.js';
 
 // ─── Firebase Admin init ──────────────────────────────────────────────────────
@@ -52,6 +52,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await handleLinking(chatId, code);
       return;
     }
+    if (text === '/cancelar') {
+      const snap = await db.collection('users').where('telegramChatId', '==', String(chatId)).limit(1).get();
+      if (!snap.empty && snap.docs[0].data().telegramPendingState) {
+        await snap.docs[0].ref.update({ telegramPendingState: FieldValue.delete() });
+        await sendTelegram(chatId, '✅ Operación cancelada. ¿Qué deseas registrar?');
+      } else {
+        await sendTelegram(chatId, 'ℹ️ No hay ninguna operación en curso.');
+      }
+      return;
+    }
 
     const snap = await db.collection('users')
       .where('telegramChatId', '==', String(chatId))
@@ -76,7 +86,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pendingState = (userData.telegramPendingState as PendingState | undefined) ?? null;
     const send = (t: string) => sendTelegram(chatId, t);
 
-    if (pendingState) {
+    if (pendingState && looksLikeNewCommand(text)) {
+      // Auto-cancel stale pending state and process as a fresh command
+      const result = await processMessage(userDoc.id, text, 'telegram', send, db, history);
+      const trimmed = result.updatedHistory.slice(-MAX_HISTORY);
+      await userDoc.ref.update({
+        telegramLastUpdateId: updateId,
+        telegramHistory: trimmed,
+        telegramPendingState: result.pendingState ?? FieldValue.delete(),
+      });
+    } else if (pendingState) {
       const newPending = await handlePendingState(db, userDoc.id, pendingState, send, text);
       await userDoc.ref.update({
         telegramLastUpdateId: updateId,

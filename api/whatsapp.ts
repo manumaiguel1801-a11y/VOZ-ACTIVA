@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { processMessage, handlePendingState, type HistoryEntry, type PendingState } from './_lib/processMessage.js';
+import { processMessage, handlePendingState, looksLikeNewCommand, type HistoryEntry, type PendingState } from './_lib/processMessage.js';
 import { sendWhatsApp, MSG_NOT_LINKED, MSG_HELP } from './_lib/whatsapp-bot.js';
 
 // ─── Firebase Admin init ──────────────────────────────────────────────────────
@@ -61,6 +61,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await handleLinking(db, from, vinculaMatch[1].trim());
       return;
     }
+    if (/^cancelar$/i.test(text)) {
+      const cancelSnap = await db.collection('users').where('whatsappPhone', '==', from).limit(1).get();
+      if (!cancelSnap.empty && cancelSnap.docs[0].data().whatsappPendingState) {
+        await cancelSnap.docs[0].ref.update({ whatsappPendingState: FieldValue.delete() });
+        await sendWhatsApp(from, '✅ Operación cancelada. ¿Qué deseas registrar?');
+      } else {
+        await sendWhatsApp(from, 'ℹ️ No hay ninguna operación en curso.');
+      }
+      return;
+    }
 
     const snap = await db.collection('users')
       .where('whatsappPhone', '==', from)
@@ -85,7 +95,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const send = (t: string) => sendWhatsApp(from, t);
 
-    if (pendingState) {
+    if (pendingState && looksLikeNewCommand(text)) {
+      // Auto-cancel stale pending state and process as a fresh command
+      const result = await processMessage(userDoc.id, text, 'whatsapp', send, db, history);
+      const trimmed = result.updatedHistory.slice(-MAX_HISTORY);
+      await userDoc.ref.update({
+        ...(msgId ? { whatsappLastMsgId: msgId } : {}),
+        whatsappHistory: trimmed,
+        whatsappPendingState: result.pendingState ?? FieldValue.delete(),
+      });
+    } else if (pendingState) {
       const newPending = await handlePendingState(db, userDoc.id, pendingState, send, text);
       await userDoc.ref.update({
         ...(msgId ? { whatsappLastMsgId: msgId } : {}),
