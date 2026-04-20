@@ -137,11 +137,11 @@ export const MovementDetailModal = ({ item, isDarkMode, onClose }: Props) => {
 
               return (
                 <>
-                  {isCobro ? (
+                  {isCobro || !hasItems ? (
                     <>
                       <Row
                         label="Concepto"
-                        value={sale.items?.[0]?.product ?? (sale as any).product ?? '—'}
+                        value={sale.concept ?? sale.items?.[0]?.product ?? (sale as any).product ?? '—'}
                         isDarkMode={isDarkMode}
                       />
                       <SourceRow source={sale.source} isDarkMode={isDarkMode} />

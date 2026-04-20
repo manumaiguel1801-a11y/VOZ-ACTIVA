@@ -22,10 +22,11 @@ export interface SaleItem {
 
 export interface Sale {
   id: string;
-  items: SaleItem[];
+  items?: SaleItem[];
   total: number;
   createdAt: any;
   source?: 'manual' | 'chat' | 'telegram' | 'whatsapp' | 'camara';
+  concept?: string; // used for simple income entries (préstamos, etc.)
   // legacy fields for old single-product sales
   product?: string;
   quantity?: number;
@@ -37,11 +38,11 @@ export function getSaleLabel(sale: Sale): string {
     if (sale.items.length === 1) return sale.items[0].product;
     return `${sale.items[0].product} y ${sale.items.length - 1} más`;
   }
-  return sale.product ?? 'Venta';
+  return sale.concept ?? sale.product ?? 'Ingreso';
 }
 
 export function getSaleQtyLabel(sale: Sale): string {
-  if (sale.items?.length > 1) return `${sale.items.length} productos`;
+  if ((sale.items?.length ?? 0) > 1) return `${sale.items!.length} productos`;
   const qty = sale.items?.[0]?.quantity ?? sale.quantity ?? 1;
   return qty > 1 ? `×${qty}` : '';
 }

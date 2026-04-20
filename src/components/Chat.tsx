@@ -99,23 +99,30 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
+function matchDebtName(storedName: string, queryName: string): boolean {
+  const s = normalizeStr(storedName);
+  const q = normalizeStr(queryName);
+  if (!q) return false;
+  if (s === q || s.includes(q) || q.includes(s)) return true;
+  const qWords = q.split(/\s+/).filter(w => w.length > 1);
+  const sWords = s.split(/\s+/);
+  if (qWords.some(qw => sWords.some(sw => sw.includes(qw) || qw.includes(sw)))) return true;
+  return strSimilarity(s, q) > 0.75;
+}
+
 function findDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): Debt | null {
-  const n = normalizeStr(name);
-  if (!n) return null;
   return debts.find(d =>
     d.type === debtType &&
     (d.status ?? 'pendiente') !== 'pagada' &&
-    (normalizeStr(d.name).includes(n) || n.includes(normalizeStr(d.name)))
+    matchDebtName(d.name, name)
   ) ?? null;
 }
 
 function findPaidDebt(debts: Debt[], name: string, debtType: 'me-deben' | 'debo'): Debt | null {
-  const n = normalizeStr(name);
-  if (!n) return null;
   return debts.find(d =>
     d.type === debtType &&
     d.status === 'pagada' &&
-    (normalizeStr(d.name).includes(n) || n.includes(normalizeStr(d.name)))
+    matchDebtName(d.name, name)
   ) ?? null;
 }
 
@@ -251,10 +258,12 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
       ...base,
       name,
       type: 'me-deben',
+      status: 'pendiente',
     });
     await addDoc(collection(db, 'users', userId, 'expenses'), {
       concept: `Préstamo a ${name}`,
       amount: data.amount,
+      items: [{ product: `Préstamo a ${name}`, quantity: 1, unitPrice: data.amount, subtotal: data.amount }],
       createdAt: serverTimestamp(),
       source: 'chat',
     });
@@ -264,9 +273,10 @@ async function saveToFirestore(userId: string, data: NonNullable<ChatResponse['d
       ...base,
       name,
       type: 'debo',
+      status: 'pendiente',
     });
     await addDoc(collection(db, 'users', userId, 'sales'), {
-      items: [{ product: `Préstamo de ${name}`, quantity: 1, unitPrice: data.amount, subtotal: data.amount }],
+      concept: `Préstamo de ${name}`,
       total: data.amount,
       createdAt: serverTimestamp(),
       source: 'chat',
@@ -407,7 +417,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               });
             } else {
               await addDoc(collection(db, 'users', userId, 'expenses'), {
-                concept: `Pago deuda: ${name}`, amount, createdAt: serverTimestamp(), source: 'chat',
+                concept: `Pago deuda: ${name}`, amount, items: [{ product: `Pago deuda: ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }], createdAt: serverTimestamp(), source: 'chat',
               });
             }
             addBotMsg(`✅ Registré nueva deuda de ${name} por $${amount.toLocaleString('es-CO')} y su pago. ¡Todo cuadrado!`, { saved: true });
@@ -446,7 +456,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               addBotMsg(`✅ ${name} te pagó $${amount.toLocaleString('es-CO')}. ¡Deuda saldada!`, { saved: true });
             } else {
               await addDoc(collection(db, 'users', userId, 'expenses'), {
-                concept: `Pago deuda: ${name}`, amount, createdAt: serverTimestamp(), source: 'chat',
+                concept: `Pago deuda: ${name}`, amount, items: [{ product: `Pago deuda: ${name}`, quantity: 1, unitPrice: amount, subtotal: amount }], createdAt: serverTimestamp(), source: 'chat',
               });
               addBotMsg(`✅ Pagaste $${amount.toLocaleString('es-CO')} a ${name}. ¡Deuda saldada!`, { saved: true });
             }
@@ -795,7 +805,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               const result = await applyDebtPayment(userId, matched, owed, false);
               debtResults.push({ found: true, debtorName: p.debtorName, amount: result.effectivePayment, isPartial: false, paymentType: dataType as 'pago-deuda-debo' | 'cobro-deuda-me-deben', ...result });
               if (dataType === 'pago-deuda-debo') {
-                await addDoc(collection(db, 'users', userId, 'expenses'), { concept: `Pago deuda: ${capitalizar(matched.name)}`, amount: owed, createdAt: serverTimestamp(), source: 'chat' });
+                await addDoc(collection(db, 'users', userId, 'expenses'), { concept: `Pago deuda: ${capitalizar(matched.name)}`, amount: owed, items: [{ product: `Pago deuda: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: owed, subtotal: owed }], createdAt: serverTimestamp(), source: 'chat' });
               } else {
                 await addDoc(collection(db, 'users', userId, 'sales'), { items: [{ product: `Cobro deuda: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: owed, subtotal: owed }], total: owed, createdAt: serverTimestamp(), source: 'chat' });
               }
@@ -814,6 +824,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               await addDoc(collection(db, 'users', userId, 'expenses'), {
                 concept: `Pago deuda: ${capitalizar(matched.name)}`,
                 amount: result.effectivePayment,
+                items: [{ product: `Pago deuda: ${capitalizar(matched.name)}`, quantity: 1, unitPrice: result.effectivePayment, subtotal: result.effectivePayment }],
                 createdAt: serverTimestamp(),
                 source: 'chat',
               });

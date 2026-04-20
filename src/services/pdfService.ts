@@ -492,7 +492,7 @@ export async function generatePassportPDF(
 
   rgb(doc, 'text', C.goldLight);
   doc.setFontSize(7);
-  doc.text('www.voz-activa.com', W - M, 280, { align: 'right' });
+  doc.text('voz-activa-snowy.vercel.app', W - M, 280, { align: 'right' });
   rgb(doc, 'text', [150, 150, 145]);
   doc.setFontSize(6.5);
   doc.text(`N° ${verifCode}`, W - M, 286, { align: 'right' });
