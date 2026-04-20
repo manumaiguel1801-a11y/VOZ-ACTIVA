@@ -85,13 +85,10 @@ export const Layout = ({
 
       {/* Top Bar */}
       <header className={cn(
-        "fixed top-0 left-0 w-full z-50 backdrop-blur-xl flex justify-between items-center px-6 py-4 transition-colors duration-500 relative",
+        "fixed top-0 left-0 w-full z-50 backdrop-blur-xl flex justify-between items-center px-6 py-4 transition-colors duration-500",
         isDarkMode ? "bg-[#0D0D0D]/85" : "bg-[#FDFBF0]/85"
       )}>
-        {/* Logo centrado */}
-        <div className="absolute left-1/2 -translate-x-1/2 translate-y-[1cm] pointer-events-none">
-          <img src="/logoapp.png" alt="Voz-Activa" className="w-14 h-14 object-contain" />
-        </div>
+        {/* Izquierda: avatar + saludo */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#D4AF37] flex-shrink-0">
             <Avatar
@@ -106,6 +103,8 @@ export const Layout = ({
             {userName}
           </h1>
         </div>
+
+        {/* Derecha: mensajes, ayuda, luna/sol, logo, perfil */}
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowSuggestions(true)}
@@ -127,7 +126,7 @@ export const Layout = ({
           >
             <HelpCircle className="w-5 h-5" />
           </button>
-          <button 
+          <button
             onClick={toggleDarkMode}
             className={cn(
               "w-10 h-10 flex items-center justify-center rounded-full transition-colors",
@@ -136,7 +135,7 @@ export const Layout = ({
           >
             {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('perfil')}
             className={cn(
               "w-10 h-10 flex items-center justify-center rounded-full transition-colors",
@@ -147,6 +146,7 @@ export const Layout = ({
           >
             <User className="w-6 h-6" />
           </button>
+          <img src="/logoapp.png" alt="Voz-Activa" className="w-10 h-10 object-contain" />
         </div>
       </header>
 
