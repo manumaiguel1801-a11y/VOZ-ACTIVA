@@ -1,5 +1,6 @@
 import { FieldValue, type DocumentReference, type Firestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { parseMovement, type HistoryEntry } from './gemini.js';
+import { conArticulo, pronombre } from './utils.js';
 
 export type { HistoryEntry };
 export type MessageSource = 'telegram' | 'whatsapp';
@@ -233,7 +234,7 @@ export async function processMessage(
 
   // Venta: producto nuevo sin precio — pedir precio
   if (sr.needsVentaPrice && sr.concept) {
-    await send(`No tengo "${sr.concept}" en el inventario. ¿A qué precio lo vendiste?`);
+    await send(`No tengo "${sr.concept}" en el inventario. ¿A qué precio vendiste ${conArticulo(sr.concept)}?`);
     return {
       updatedHistory,
       pendingState: { type: 'venta-nueva', concept: sr.concept, quantity: sr.quantity ?? 1, step: 'asking-precio-venta', source },
@@ -249,7 +250,7 @@ export async function processMessage(
 
   // Compra: producto nuevo sin precio — pedir precio antes de todo
   if (sr.isNewCompra && sr.needsCompraPrice && sr.concept) {
-    await send(`¿A cuánto compraste ${sr.concept}?`);
+    await send(`¿A cuánto compraste ${conArticulo(sr.concept)}?`);
     return {
       updatedHistory,
       pendingState: { type: 'compra-nueva', concept: sr.concept, quantity: sr.quantity ?? 1, step: 'asking-precio-compra', source },
@@ -261,7 +262,7 @@ export async function processMessage(
     const qty = sr.quantity ?? 1;
     const pc = sr.precioCompra ?? 0;
     const totalStr = pc > 0 ? `$${(qty * pc).toLocaleString('es-CO')}` : `$${amount.toLocaleString('es-CO')}`;
-    await send(`Listo, anoté el gasto de ${totalStr} por ${qty} ${sr.concept}. ¿Los vas a vender?`);
+    await send(`Listo, anoté el gasto de ${totalStr} por ${qty} ${conArticulo(sr.concept)}. ¿${pronombre(sr.concept).charAt(0).toUpperCase() + pronombre(sr.concept).slice(1)} vas a vender?`);
     return {
       updatedHistory,
       pendingState: { type: 'compra-nueva', concept: sr.concept, quantity: qty, precioCompra: pc, step: 'asking-si-vende', source },
@@ -270,7 +271,7 @@ export async function processMessage(
 
   // Compra: producto existente sin precio — pedir precio primero
   if (sr.needsCompraPrice && sr.concept) {
-    await send(`¿A cuánto compraste ${sr.concept}?`);
+    await send(`¿A cuánto compraste ${conArticulo(sr.concept)}?`);
     return {
       updatedHistory,
       pendingState: { type: 'compra-existente', concept: sr.concept, quantity: sr.quantity ?? 1, step: 'asking-precio-compra', source },
@@ -282,7 +283,7 @@ export async function processMessage(
     const qty = sr.quantity ?? 1;
     const pc = sr.precioCompra ?? 0;
     const totalStr = pc > 0 ? `$${(qty * pc).toLocaleString('es-CO')}` : `$${amount.toLocaleString('es-CO')}`;
-    await send(`Listo, anoté el gasto de ${totalStr} por ${qty} ${sr.concept}. ¿Los vas a vender?`);
+    await send(`Listo, anoté el gasto de ${totalStr} por ${qty} ${conArticulo(sr.concept)}. ¿${pronombre(sr.concept).charAt(0).toUpperCase() + pronombre(sr.concept).slice(1)} vas a vender?`);
     return {
       updatedHistory,
       pendingState: { type: 'compra-existente', concept: sr.concept, quantity: qty, precioCompra: pc, step: 'asking-si-vende', source },
@@ -601,14 +602,14 @@ export async function handlePendingState(
   // ── Compra nueva — asking-si-vende ─────────────────────────────────────────
   if (pendingState.type === 'compra-nueva' && pendingState.step === 'asking-si-vende') {
     if (isAfirmativo(lower)) {
-      await send(`¿A qué precio vendes ${pendingState.concept}?`);
+      await send(`¿A qué precio vendes ${conArticulo(pendingState.concept ?? '')}?`);
       return { ...pendingState, step: 'asking-precio-venta' };
     }
     if (isNegativo(lower)) {
       await send('Entendido. Quedó registrado solo como gasto. 👍');
       return null;
     }
-    await send(`No entendí. ¿Vas a vender *${pendingState.concept}*? Responde *sí* o *no*.`);
+    await send(`No entendí. ¿Vas a vender *${conArticulo(pendingState.concept ?? '')}*? Responde *sí* o *no*.`);
     return pendingState;
   }
 
@@ -671,7 +672,7 @@ export async function handlePendingState(
       createdAt: FieldValue.serverTimestamp(),
       source: pendingState.source,
     });
-    await send(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${concept} anotado. ¿Los vas a vender?`);
+    await send(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${conArticulo(concept)} anotado. ¿${pronombre(concept).charAt(0).toUpperCase() + pronombre(concept).slice(1)} vas a vender?`);
     return { ...pendingState, precioCompra: price, step: 'asking-si-vende' };
   }
 
@@ -697,7 +698,7 @@ export async function handlePendingState(
       await send('Entendido. Quedó registrado solo como gasto. 👍');
       return null;
     }
-    await send(`No entendí. ¿Vas a vender *${pendingState.concept}*? Responde *sí* o *no*.`);
+    await send(`No entendí. ¿Vas a vender *${conArticulo(pendingState.concept ?? '')}*? Responde *sí* o *no*.`);
     return pendingState;
   }
 

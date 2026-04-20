@@ -27,7 +27,11 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
-  const verifyCode = React.useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
+  const verifyCode = React.useMemo(() => {
+    const pathMatch = window.location.pathname.match(/^\/verificar\/(.+)$/);
+    if (pathMatch) return pathMatch[1];
+    return new URLSearchParams(window.location.search).get('verificar');
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {

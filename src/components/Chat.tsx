@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CheckCircle2, Send, Loader2, ShoppingBag, TrendingDown, UserMinus, UserPlus, Mic, Square, AlertCircle, CreditCard, Package, ArrowDownToLine } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { cn, capitalizar } from '../lib/utils';
+import { cn, capitalizar, conArticulo, pronombre } from '../lib/utils';
 import { sendMessageToGemini, ChatResponse } from '../services/gemini';
 import { Debt, InventoryProduct, getPrecioVenta } from '../types';
 
@@ -493,7 +493,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               items: [{ product: concept, quantity, unitPrice: price, subtotal: total }],
             });
             setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-si-vende' });
-            addBotMsg(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${concept} anotado. ¿Los vas a vender?`);
+            addBotMsg(`Listo, gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${conArticulo(concept)} anotado. ¿${pronombre(concept).charAt(0).toUpperCase() + pronombre(concept).slice(1)} vas a vender?`);
           } catch (e) {
             console.error('[Chat] Error al guardar compra:', e);
             addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
@@ -503,7 +503,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
         } else if (pendingProduct.isCompra) {
           // compra de producto NUEVO — preguntar si lo va a vender
           setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-si-vende' });
-          addBotMsg(`Listo, costo de $${price.toLocaleString('es-CO')} anotado. ¿Los vas a vender?`);
+          addBotMsg(`Listo, costo de $${price.toLocaleString('es-CO')} anotado. ¿${pronombre(pendingProduct.concept).charAt(0).toUpperCase() + pronombre(pendingProduct.concept).slice(1)} vas a vender?`);
         } else {
           // venta de producto nuevo — ya tenemos precioVenta, ahora ir a stock
           setPendingProduct({ ...pendingProduct, precioCompra: price, step: 'asking-stock' });
@@ -562,6 +562,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             // Producto existente — actualizar stock
             const { productId, productCurrentStock = 0, quantity, concept, precioCompra } = pendingProduct;
             const newStock = productCurrentStock + quantity;
+            const total = quantity * (precioCompra ?? 0);
             setIsLoading(true);
             try {
               await updateDoc(doc(db, 'users', userId, 'inventario', productId), {
@@ -570,8 +571,8 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
                 updatedAt: serverTimestamp(),
               });
               addBotMsg(
-                `✅ Stock de ${concept} actualizado: ${newStock} unidades.`,
-                { saved: true, stockUpdate: { nombre: concept, newStock } }
+                `¡Listo! ${quantity} ${concept} — gasto $${total.toLocaleString('es-CO')} registrado. Stock actualizado: ${newStock} unidades.`,
+                { saved: true, stockUpdate: { nombre: concept, newStock }, data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra ?? 0 } }
               );
             } catch (e) {
               addBotMsg('No pude guardar. Revisa tu conexión e intenta de nuevo.');
@@ -582,12 +583,12 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           } else {
             // Producto nuevo — pedir precio de venta
             setPendingProduct({ ...pendingProduct, step: 'asking-precio-venta' });
-            addBotMsg(`¿A qué precio vendes ${pendingProduct.concept}?`);
+            addBotMsg(`¿A qué precio vendes ${conArticulo(pendingProduct.concept)}?`);
           }
           return;
         }
 
-        addBotMsg(`No entendí. ¿Vas a vender *${pendingProduct.concept}*? Responde sí o no.`);
+        addBotMsg(`No entendí. ¿Vas a vender *${conArticulo(pendingProduct.concept)}*? Responde sí o no.`);
         return;
       }
 
@@ -659,7 +660,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             });
             addBotMsg(
               `¡Listo! ${quantity} ${concept} guardados — compra a $${precioCompra.toLocaleString('es-CO')}, venta a $${price.toLocaleString('es-CO')}. Gasto de $${total.toLocaleString('es-CO')} registrado.`,
-              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra } }
+              { saved: true, data: { type: 'compra', amount: total, concept, quantity, unitPrice: precioCompra }, stockUpdate: { nombre: concept, newStock: quantity } }
             );
           } catch (e) {
             console.error('[Chat] Error al guardar compra nueva:', e);
@@ -946,7 +947,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
             productId: foundProduct.id,
             productCurrentStock: foundProduct.cantidad ?? 0,
           });
-          addBotMsg(`¿A qué precio compraste ${foundProduct.nombre}?`);
+          addBotMsg(`¿A qué precio compraste ${conArticulo(foundProduct.nombre)}?`);
           setIsLoading(false);
           return;
         }
@@ -954,7 +955,7 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
         if (!foundProduct && precioCompra <= 0) {
           // Nuevo producto sin precio — preguntar precio compra y venta
           setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, step: 'asking-precio-compra' });
-          addBotMsg(`¿A qué precio compraste ${concept}?`);
+          addBotMsg(`¿A qué precio compraste ${conArticulo(concept)}?`);
           setIsLoading(false);
           return;
         }
@@ -978,11 +979,11 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
               productId: foundProduct.id,
               productCurrentStock: foundProduct.cantidad ?? 0,
             });
-            addBotMsg(`Listo, anoté el gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${foundProduct.nombre}. ¿Lo vas a vender?`);
+            addBotMsg(`Listo, anoté el gasto de $${total.toLocaleString('es-CO')} por ${quantity} ${conArticulo(foundProduct.nombre)}. ¿${pronombre(foundProduct.nombre).charAt(0).toUpperCase() + pronombre(foundProduct.nombre).slice(1)} vas a vender?`);
           } else {
             // Nuevo producto con precio — preguntar si lo va a vender
             setPendingProduct({ concept: concept || 'producto', quantity, isCompra: true, precioCompra, step: 'asking-si-vende' });
-            addBotMsg(`Compra de ${quantity} ${concept} a $${precioCompra.toLocaleString('es-CO')} c/u (total $${total.toLocaleString('es-CO')}). ¿Los vas a vender?`);
+            addBotMsg(`Compra de ${quantity} ${conArticulo(concept)} a $${precioCompra.toLocaleString('es-CO')} c/u (total $${total.toLocaleString('es-CO')}). ¿${pronombre(concept).charAt(0).toUpperCase() + pronombre(concept).slice(1)} vas a vender?`);
           }
         } catch (e) {
           console.error('[Chat] Error al guardar compra:', e);
@@ -1177,12 +1178,12 @@ export const Chat = ({ isDarkMode, userId, debts, inventory }: Props) => {
           )}>
             <span>
               {pendingProduct.step === 'asking-precio-compra'
-                ? `¿A cuánto compraste ${pendingProduct.concept}?`
+                ? `¿A cuánto compraste ${conArticulo(pendingProduct.concept)}?`
                 : pendingProduct.step === 'asking-si-vende'
-                ? `¿Vas a vender ${pendingProduct.concept}?`
+                ? `¿Vas a vender ${conArticulo(pendingProduct.concept)}?`
                 : pendingProduct.step === 'asking-precio-venta'
-                ? `¿A cuánto vendes ${pendingProduct.concept}?`
-                : `¿Cuánto stock tienes de ${pendingProduct.concept}?`}
+                ? `¿A cuánto vendes ${conArticulo(pendingProduct.concept)}?`
+                : `¿Cuánto stock tienes de ${conArticulo(pendingProduct.concept)}?`}
             </span>
             <button
               onClick={() => { setPendingProduct(null); addBotMsg('Ok, cancelado.'); }}

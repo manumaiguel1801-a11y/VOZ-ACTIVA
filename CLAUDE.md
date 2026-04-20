@@ -38,7 +38,9 @@ Mobile-first PWA for Colombian street vendors / microbusiness owners. The UI is 
 
 `App.tsx` is the root. It subscribes to Firebase Auth and then opens four `onSnapshot` listeners (sales, expenses, debts, inventory) per authenticated user. All data lives in `App` state and flows down as props — there is no React context or state manager. Views are selected by a single `activeTab: Tab` state.
 
-`?verificar=CODE` in the URL short-circuits the normal flow and renders `<VerificationView>` before auth (used for passport identity verification).
+`?verificar=CODE` in the URL short-circuits the normal flow and renders `<VerificationView>` before auth (used for passport identity verification — the code is looked up in the publicly-readable `passportVerifications/{code}` Firestore collection).
+
+`<Auth>` supports two registration paths: standard email/password and a "manual" mode for users without an email, where the app auto-generates a synthetic email from their phone number. The generated email is shown to the user so they can log in again later.
 
 ### Tab / View Mapping
 
@@ -56,7 +58,7 @@ Navigation is a fixed bottom nav bar inside `<Layout>`. The floating `<ChatBubbl
 ### Key Files
 
 - `src/types.ts` — shared types and small helper functions (`getSaleLabel`, `getPrecioVenta`, `getMargen`, etc.)
-- `src/firebase.ts` — initializes Firebase app, exports `auth` and `db`
+- `src/firebase.ts` — initializes Firebase app, exports `auth`, `db`, and `storage` (Firebase Storage for profile photo uploads)
 - `src/services/gemini.ts` — **client-side** Gemini wrapper for the in-app chat bubble
 - `src/services/scoringService.ts` — credit score algorithm (Colombian 150–950 scale) and all PassportView helpers
 - `src/services/pdfService.ts` — generates the business passport PDF with jsPDF + QR code
@@ -96,6 +98,12 @@ Firestore rules (`firestore.rules`): users read/write only their own subtree. `p
 - `api/_lib/whatsapp-bot.ts` / `api/_lib/telegram-bot.ts` — Thin send helpers.
 
 Bot conversation history is capped at `MAX_HISTORY = 10` entries (5 turns) per user per channel and stored on the user doc.
+
+**Bot linking flow:** User taps "Vincular bot" in ProfileView → app writes a `linkCode: { code, expiresAt }` to the user doc → user sends `vincular <code>` to the WhatsApp or Telegram bot → webhook looks up the user by code → stores `whatsappPhone` or `telegramChatId` on the user doc. WhatsApp deduplicates messages using `whatsappLastMsgId` stored on the user doc (same message arriving twice is dropped).
+
+**Multi-turn `PendingState`:** When `processMessage` needs more information (e.g., user said "compré arroz" without a price, or a debt payment exceeds what's owed), it returns a `PendingState` saved to `whatsappPendingState` / `telegramPendingState`. The next message routes to `handlePendingState` instead of `processMessage`. Flow types: `compra-nueva` (asks purchase price → whether they sell it → sale price), `compra-existente` (asks whether they sell it → sale price), `deuda-ya-pagada` (asks about new debt), `pago-excede-deuda` (asks to confirm clamped amount). `isAfirmativo` / `isNegativo` helpers in `processMessage.ts` parse yes/no answers.
+
+**Inventory fuzzy matching** (`findInventoryProduct` in `api/_lib/processMessage.ts`): 4-step cascade — exact name match → substring containment → word-level inclusion → Spanish stem + Levenshtein similarity > 0.8. `parseUserPrice` handles Colombian shorthand: "50k" and "50 mil" both parse to 50 000.
 
 ### Gemini AI — Two Separate Integrations
 
