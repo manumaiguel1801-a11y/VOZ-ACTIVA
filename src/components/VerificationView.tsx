@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { ShieldCheck, AlertCircle, Clock } from 'lucide-react';
 
@@ -10,8 +8,8 @@ interface VerificationData {
   scoreLabel: string;
   businessAgeDays: number;
   monthlyProjection: number;
-  generatedAt: any;
-  expiresAt: any;
+  generatedAt: string | null;
+  expiresAt: string | null;
 }
 
 interface Props {
@@ -43,20 +41,12 @@ export const VerificationView = ({ code, isDarkMode }: Props) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const snap = await getDoc(doc(db, 'passportVerifications', code));
-        if (!snap.exists()) {
-          setStatus('notfound');
-        } else {
-          const d = snap.data() as VerificationData;
-          const expiry = d.expiresAt?.toDate ? d.expiresAt.toDate() : new Date(d.expiresAt);
-          if (expiry < new Date()) {
-            setStatus('expired');
-            setData(d);
-          } else {
-            setData(d);
-            setStatus('valid');
-          }
-        }
+        const res = await fetch(`/api/verify?code=${encodeURIComponent(code)}`);
+        if (res.status === 404) { setStatus('notfound'); return; }
+        if (!res.ok) { setStatus('notfound'); return; }
+        const json = await res.json();
+        setData(json as VerificationData);
+        setStatus(json.status === 'expired' ? 'expired' : 'valid');
       } catch {
         setStatus('notfound');
       } finally {
@@ -171,16 +161,16 @@ export const VerificationView = ({ code, isDarkMode }: Props) => {
                 <div className="flex justify-between text-xs">
                   <span className={isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60'}>Emisión</span>
                   <span className="font-bold">
-                    {data.generatedAt?.toDate
-                      ? data.generatedAt.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+                    {data.generatedAt
+                      ? new Date(data.generatedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
                       : '—'}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className={isDarkMode ? 'text-[#FDFBF0]/40' : 'text-[#5b5c5a]/60'}>Válido hasta</span>
                   <span className="font-bold text-[#B8860B]">
-                    {data.expiresAt?.toDate
-                      ? data.expiresAt.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+                    {data.expiresAt
+                      ? new Date(data.expiresAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
                       : '—'}
                   </span>
                 </div>

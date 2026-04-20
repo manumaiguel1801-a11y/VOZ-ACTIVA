@@ -1,7 +1,6 @@
 import jsPDF from 'jspdf';
-import QRCode from 'qrcode';
-import { doc as fsDoc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { doc as fsDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { Sale, Expense, Debt, UserProfile } from '../types';
 import { calculateScore, getScoreLabel, ScoreBreakdown, getBusinessAgeDays, getMonthlyProjection } from './scoringService';
 
@@ -184,24 +183,46 @@ export async function generatePassportPDF(
     verifCode = generateVerifCode(cedula);
   }
 
-  // Si es código nuevo, persistirlo en Firestore y publicar en passportVerifications
-  if (verifCode !== existing?.code && userId) {
-    const expiresAt = addMonths(now, 3);
-    const expiresTs = Timestamp.fromDate(expiresAt);
-    await Promise.all([
-      updateDoc(fsDoc(db, 'users', userId), {
-        verificationCode: { code: verifCode, expiresAt: expiresTs },
-      }),
-      setDoc(fsDoc(db, 'passportVerifications', verifCode), {
-        name: nombre,
-        score: bd.scoreFinal,
-        scoreLabel: getScoreLabel(bd.scoreFinal),
-        businessAgeDays: getBusinessAgeDays(sales, expenses, debts),
-        monthlyProjection: getMonthlyProjection(sales),
-        generatedAt: Timestamp.fromDate(now),
-        expiresAt: expiresTs,
-      }),
-    ]);
+  // Persistir datos de verificación via API (Admin SDK — sin restricciones de reglas).
+  // No bloquea la descarga si falla.
+  if (userId) {
+    const newExpiry = addMonths(now, 3);
+    const newExpiryTs = Timestamp.fromDate(newExpiry);
+
+    try {
+      // Actualizar el doc del usuario con el código (esto sí pasa por cliente SDK)
+      if (verifCode !== existing?.code) {
+        await updateDoc(fsDoc(db, 'users', userId), {
+          verificationCode: { code: verifCode, expiresAt: newExpiryTs },
+        });
+      }
+
+      // Escribir passportVerifications via API con token de autenticación
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken) {
+        const expiresIso = (verifCode === existing?.code && existing?.expiresAt)
+          ? (existing.expiresAt.toDate ? existing.expiresAt.toDate().toISOString() : new Date(existing.expiresAt).toISOString())
+          : newExpiry.toISOString();
+
+        await fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({
+            code: verifCode,
+            data: {
+              name: nombre,
+              score: bd.scoreFinal,
+              scoreLabel: getScoreLabel(bd.scoreFinal),
+              businessAgeDays: getBusinessAgeDays(sales, expenses, debts),
+              monthlyProjection: getMonthlyProjection(sales),
+              expiresAt: expiresIso,
+            },
+          }),
+        });
+      }
+    } catch (e) {
+      console.error('[pdfService] Error guardando verificación:', e);
+    }
   }
 
   const validUntil = formatDate(addMonths(now, 3));
@@ -403,68 +424,35 @@ export async function generatePassportPDF(
 
   y += 8;
 
-  // ── 6. CERTIFICACIÓN + QR ────────────────────────────────────────────���────
+  // ── 6. CERTIFICACIÓN ─────────────────────────────────────────────────────────
   sectionTitle(doc, 'Certificación', M, y, CW);
   y += 7;
 
-  // Generar QR — URL verificable si hay baseUrl, texto plano como fallback
-  const qrContent = baseUrl
-    ? `${baseUrl}?verificar=${verifCode}`
-    : `VOZ-ACTIVA | ${verifCode} | Score: ${bd.scoreFinal} | ${getScoreLabel(bd.scoreFinal)}`;
+  const certH = 26;
 
-  let qrDataUrl = '';
-  try {
-    qrDataUrl = await QRCode.toDataURL(qrContent, {
-      width: 200,
-      margin: 1,
-      color: { dark: '#1A1A1A', light: '#FDFBF0' },
-    });
-  } catch (_) { /* QR opcional */ }
-
-  const certH = 36;
-  const qrSize = 30;
-  const certW = qrDataUrl ? CW - qrSize - 5 : CW;
-
-  // Caja certificación
   rgb(doc, 'fill', C.cream);
   rgb(doc, 'draw', C.gold);
   doc.setLineWidth(0.4);
-  doc.roundedRect(M, y, certW, certH, 2, 2, 'FD');
+  doc.roundedRect(M, y, CW, certH, 2, 2, 'FD');
   rgb(doc, 'fill', C.gold);
   doc.roundedRect(M, y, 3, certH, 1, 1, 'F');
+
+  const cx = M + CW / 2;
+  const certTextW = CW - 10; // 5mm de margen a cada lado
 
   rgb(doc, 'text', C.dark);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('Voz-Activa certifica que:', M + 7, y + 7);
+  doc.text('Voz-Activa certifica que:', cx, y + 7, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   rgb(doc, 'text', C.gray);
-  const certLines = [
-    `El titular ha registrado actividad comercial verificada en la plataforma Voz-Activa.`,
-    `El scoring se basa en comportamiento real: consistencia de ventas, capacidad de`,
-    `ahorro, gestión de cartera y calidad de registros financieros.`,
-    `Este documento puede presentarse ante bancos, cooperativas y microfinancieras`,
-    `(como Monet o Quipu) como prueba alternativa de capacidad de pago.`,
-  ];
-  certLines.forEach((line, i) => doc.text(line, M + 7, y + 14 + i * 4.5));
+  const certRaw = `El titular ha registrado actividad comercial verificada en la plataforma Voz-Activa. El scoring se basa en comportamiento real: consistencia de ventas, capacidad de ahorro, gestión de cartera y calidad de registros financieros. Este documento puede presentarse ante bancos, cooperativas y microfinancieras como prueba alternativa de capacidad de pago.`;
+  const certLines = doc.splitTextToSize(certRaw, certTextW);
+  certLines.forEach((line: string, i: number) => doc.text(line, cx, y + 13 + i * 4, { align: 'center' }));
 
-  // QR
-  if (qrDataUrl) {
-    const qrX = M + certW + 5;
-    rgb(doc, 'fill', C.cream);
-    rgb(doc, 'draw', C.lightGray);
-    doc.setLineWidth(0.2);
-    doc.roundedRect(qrX, y, qrSize, certH, 2, 2, 'FD');
-    doc.addImage(qrDataUrl, 'PNG', qrX + 1, y + 1, qrSize - 2, qrSize - 2);
-    rgb(doc, 'text', C.gray);
-    doc.setFontSize(5.5);
-    doc.text('Escanea para', qrX + qrSize / 2, y + certH - 4, { align: 'center' });
-    doc.text('verificar', qrX + qrSize / 2, y + certH - 1, { align: 'center' });
-  }
-
-  y += certH + 8;
+  y += certH + 6;
 
   // ── 7. CÓDIGO DE VERIFICACIÓN ─────────────────────────────────��───────────
   rgb(doc, 'fill', [242, 238, 218]);
@@ -489,25 +477,25 @@ export async function generatePassportPDF(
 
   // ── 8. FOOTER ─────────────────────────────────────────────────────────────
   rgb(doc, 'fill', C.dark);
-  doc.rect(5, 280, W - 5, 17, 'F');
+  doc.rect(5, 273, W - 5, 24, 'F');
 
   rgb(doc, 'text', C.goldLight);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('VOZ·ACTIVA', M, 288);
+  doc.text('VOZ·ACTIVA', M, 280);
 
   rgb(doc, 'text', [150, 150, 145]);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text('Scoring Crediticio Alternativo para Micronegocios de Colombia', M, 292.5);
-  doc.text('Este documento no constituye garantía financiera. Solo certifica actividad registrada en la plataforma.', M, 296);
+  doc.text('Scoring Crediticio Alternativo para Micronegocios de Colombia', M, 286);
+  doc.text('Este documento no constituye garantía financiera. Solo certifica actividad registrada en la plataforma.', M, 292);
 
   rgb(doc, 'text', C.goldLight);
   doc.setFontSize(7);
-  doc.text('www.voz-activa.com', W - M, 288, { align: 'right' });
+  doc.text('www.voz-activa.com', W - M, 280, { align: 'right' });
   rgb(doc, 'text', [150, 150, 145]);
   doc.setFontSize(6.5);
-  doc.text(`N° ${verifCode}`, W - M, 292.5, { align: 'right' });
+  doc.text(`N° ${verifCode}`, W - M, 286, { align: 'right' });
 
   const safeCedula = cedula.replace(/\D/g, '');
   const dateStr = now.toISOString().slice(0, 10);

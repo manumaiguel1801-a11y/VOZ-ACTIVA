@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   Copy,
   CheckCircle2,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { auth, db } from '../firebase';
@@ -23,6 +24,23 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface AuthProps {
   isDarkMode: boolean;
+}
+
+function mensajeError(codigo: string): string {
+  const errores: Record<string, string> = {
+    'auth/wrong-password': '¡Uy! La contraseña no es correcta. ¿La olvidaste?',
+    'auth/invalid-credential': '¡Uy! El correo o la contraseña no son correctos.',
+    'auth/user-not-found': 'No encontramos una cuenta con ese correo. ¿Ya te registraste?',
+    'auth/email-already-in-use': 'Ese correo ya tiene una cuenta. Intenta iniciar sesión.',
+    'auth/weak-password': 'La contraseña debe tener mínimo 6 caracteres.',
+    'auth/invalid-email': 'Ese correo no parece válido. Revísalo.',
+    'auth/too-many-requests': 'Demasiados intentos. Espera un momento y vuelve a intentarlo.',
+    'auth/network-request-failed': 'Sin conexión a internet. Verifica tu red.',
+    'auth/user-disabled': 'Esta cuenta fue desactivada. Contacta soporte.',
+    'auth/operation-not-allowed': 'Este método de acceso no está habilitado.',
+    'auth/popup-closed-by-user': 'Cerraste la ventana antes de terminar. Intenta de nuevo.',
+  };
+  return errores[codigo] ?? 'Ocurrió un error inesperado. Intenta de nuevo.';
 }
 
 export const Auth = ({ isDarkMode }: AuthProps) => {
@@ -78,8 +96,7 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
         }
       }
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Ocurrió un error');
+      setError(mensajeError(err.code ?? ''));
     } finally {
       setLoading(false);
     }
@@ -263,9 +280,10 @@ export const Auth = ({ isDarkMode }: AuthProps) => {
           </div>
 
           {error && (
-            <p className="text-red-500 text-sm font-medium bg-red-500/10 p-3 rounded-lg border border-red-500/20">
-              {error}
-            </p>
+            <div className="flex items-start gap-3 bg-[#FEE2E2] text-[#991B1B] px-4 py-3 rounded-xl">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p className="text-sm font-medium leading-snug">{error}</p>
+            </div>
           )}
 
           <button 
