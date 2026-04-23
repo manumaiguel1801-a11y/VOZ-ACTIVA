@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ShoppingBag, BarChart2, TrendingDown, ChevronRight, Send, MessageCircle } from 'lucide-react';
+import { Plus, ShoppingBag, BarChart2, TrendingDown, ChevronRight, Send, MessageCircle, ArrowUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel, getSaleQtyLabel } from '../types';
@@ -290,6 +290,13 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               {filteredMovements.map((m) => {
                 if (m.kind === 'sale') {
                   const s = m.data;
+                  const saleConceptRaw: string =
+                    (s as any).concept ??
+                    s.items?.[0]?.product ??
+                    (s as any).product ??
+                    '';
+                  const isIngreso = !!(s as any).isIngreso ||
+                    /^(cobro deuda|préstamo de)/i.test(saleConceptRaw);
                   return (
                     <button
                       key={`s-${s.id}`}
@@ -300,19 +307,29 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                       )}
                     >
                       <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
-                          <ShoppingBag className="w-6 h-6" />
-                        </div>
+                        {isIngreso ? (
+                          <div className={cn('w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0', isDarkMode ? 'bg-green-500/20' : 'bg-green-100')}>
+                            <ArrowUp className="w-6 h-6 text-green-500" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-[#ffc96f] flex items-center justify-center text-[#2e2f2d] flex-shrink-0">
+                            <ShoppingBag className="w-6 h-6" />
+                          </div>
+                        )}
                         <div className="min-w-0">
-                          <p className="font-bold truncate">{getSaleLabel(s)}</p>
+                          <p className="font-bold truncate">
+                            {isIngreso ? (saleConceptRaw || getSaleLabel(s)) : getSaleLabel(s)}
+                          </p>
                           <div className={cn('flex items-center gap-1.5 text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
-                            <span>{formatRelativeTime(m.date)}{getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</span>
+                            <span>{formatRelativeTime(m.date)}{!isIngreso && getSaleQtyLabel(s) && ` · ${getSaleQtyLabel(s)}`}</span>
                             <SourceBadge source={s.source} />
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <p className="font-bold text-[#B8860B]">+${(s.total || 0).toLocaleString('es-CO')}</p>
+                        <p className={cn('font-bold', isIngreso ? 'text-green-500' : 'text-[#B8860B]')}>
+                          +${(s.total || 0).toLocaleString('es-CO')}
+                        </p>
                         <ChevronRight className={cn('w-4 h-4', isDarkMode ? 'text-white/20' : 'text-black/20')} />
                       </div>
                     </button>
