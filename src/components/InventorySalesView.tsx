@@ -34,7 +34,7 @@ interface Props {
 
 const TipCard: React.FC<{ text: string; onDismiss: () => void; isDarkMode: boolean }> = ({ text, onDismiss, isDarkMode }) => (
   <div
-    className={cn('flex-shrink-0 w-64 flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#F5F0E8]')}
+    className={cn('flex-shrink-0 w-64 md:w-auto flex items-start justify-between gap-3 px-4 py-3 rounded-xl border-l-4', isDarkMode ? 'bg-[#2A2A2A]' : 'bg-[#F5F0E8]')}
     style={{ borderLeftColor: '#F5A623' }}
   >
     <p className={cn('text-sm font-medium leading-snug', isDarkMode ? 'text-[#FDFBF0]/70' : 'text-[#5b5c5a]')}>{text}</p>
@@ -48,8 +48,8 @@ export const InventorySalesView = ({ isDarkMode, sales, inventory, userId }: Pro
   const [activeSubTab, setActiveSubTab] = useState<'inventario' | 'ventas'>('inventario');
 
   return (
-    <div className="space-y-6">
-      <div className={cn('flex p-1 rounded-2xl transition-colors', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]')}>
+    <div className="space-y-6 md:max-w-4xl md:mx-auto">
+      <div className={cn('flex p-1 rounded-2xl transition-colors md:max-w-2xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]')}>
         <button
           onClick={() => setActiveSubTab('inventario')}
           className={cn(
@@ -225,7 +225,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Search + Add button */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 md:max-w-2xl">
         <div className={cn('flex-1 h-12 rounded-xl flex items-center px-4 gap-2 transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
           <Search className="w-4 h-4 opacity-40 flex-shrink-0" />
           <input
@@ -366,7 +366,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
             <Lightbulb className="w-4 h-4" style={{ color: '#F5A623' }} />
             <p className={cn('text-sm font-black', isDarkMode ? 'text-white/60' : 'text-[#5b5c5a]')}>Consejos</p>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 md:overflow-x-visible md:grid md:grid-cols-3 md:mx-0 md:px-0" style={{ scrollbarWidth: 'none' }}>
             {inventoryTips.map(tip => (
               <TipCard
                 key={tip.id}
@@ -381,7 +381,7 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
 
       {/* Product list */}
       <div className="space-y-3">
-        <h3 className="font-bold text-lg px-1">Productos en Stock</h3>
+        <h3 className="font-bold text-lg px-1 md:max-w-2xl">Productos en Stock</h3>
         {inventory.length === 0 ? (
           <EmptyState
             icon={<Package className={cn('w-7 h-7', isDarkMode ? 'text-[#FDFBF0]/30' : 'text-[#5b5c5a]/40')} />}
@@ -397,7 +397,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
             isDarkMode={isDarkMode}
           />
         ) : (
-          filtered.map((product) => {
+          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+          {filtered.map((product) => {
             const isEditing = editingId === product.id;
             const isUpdating = updatingId === product.id;
             const isDeleting = deletingId === product.id;
@@ -530,7 +531,8 @@ const InventorySection = ({ isDarkMode, inventory, userId }: InventorySectionPro
                 </div>
               </div>
             );
-          })
+          })}
+          </div>
         )}
       </div>
 

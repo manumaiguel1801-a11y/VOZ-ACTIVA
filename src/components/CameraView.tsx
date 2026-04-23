@@ -516,7 +516,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
       {/* Viewfinder */}
       <div
         className={cn(
-          'relative overflow-hidden rounded-[2rem] aspect-[4/3] flex flex-col items-center justify-center gap-5 cursor-pointer border-2 border-dashed transition-all',
+          'relative overflow-hidden rounded-[2rem] aspect-[4/3] md:aspect-auto md:h-48 flex flex-col items-center justify-center gap-5 cursor-pointer border-2 border-dashed transition-all',
           isDarkMode ? 'bg-[#1A1A1A] border-[#B8860B]/30' : 'bg-[#FDFBF0] border-[#B8860B]/20',
         )}
         onClick={() => galleryRef.current?.click()}
@@ -1468,7 +1468,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 md:max-w-2xl md:mx-auto">
       {/* Hidden file inputs */}
       <input ref={galleryRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
       {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}

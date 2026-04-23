@@ -140,8 +140,8 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
 
   return (
     <>
-      {/* Desktop: 2-column grid. Mobile: single column. */}
-      <div className="md:grid md:grid-cols-2 md:gap-8 md:items-start">
+      {/* Desktop: 60/40 grid. Mobile: single column. */}
+      <div className="md:grid md:gap-8" style={{ gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)' } as React.CSSProperties}>
 
         {/* ── Left column: hero + CTAs + chart ── */}
         <div className="space-y-8">
@@ -211,10 +211,10 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               </span>
             </div>
             <div
-              className="w-full [&_svg]:outline-none [&_svg]:border-none [&>div]:outline-none [&>div]:border-none"
-              style={{ height: 160, outline: 'none', border: 'none' }}
+              className="w-full h-40 md:h-[120px] [&_svg]:outline-none [&_svg]:border-none [&>div]:outline-none [&>div]:border-none"
+              style={{ outline: 'none', border: 'none' }}
             >
-              <ResponsiveContainer width="100%" height={160} minWidth={0} style={{ outline: 'none', border: 'none' }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} style={{ outline: 'none', border: 'none' }}>
                 <BarChart data={weeklyData} style={{ outline: 'none', border: 'none' }} barCategoryGap="20%">
                   <Bar dataKey="value" radius={[10, 10, 0, 0]} activeBar={false} isAnimationActive={false}>
                     {weeklyData.map((entry, index) => (
@@ -242,8 +242,8 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
           </section>
         </div>
 
-        {/* ── Right column: movements ── */}
-        <div className="space-y-4 mt-8 md:mt-0">
+        {/* ── Right column: movements — sticky scrollable on desktop ── */}
+        <div className="space-y-4 mt-8 md:mt-0 md:sticky md:top-24 md:max-h-[calc(100vh-130px)] md:overflow-y-auto md:pr-1">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold">Movimientos recientes</h3>
             <button

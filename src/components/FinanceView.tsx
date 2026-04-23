@@ -137,8 +137,8 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className={cn('p-5 rounded-2xl transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+      <div className="grid grid-cols-2 gap-4 md:flex md:gap-4 md:justify-start">
+        <div className={cn('p-5 rounded-2xl transition-all md:w-64', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
           <div className="flex items-center gap-2 text-green-500 mb-2">
             <ArrowUpRight className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest">Ingresos</span>
@@ -146,7 +146,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
           <p className="text-2xl font-black text-[#B8860B]">${(monthIncome || 0).toLocaleString('es-CO')}</p>
           <p className="text-[10px] opacity-40 mt-1">Este mes</p>
         </div>
-        <div className={cn('p-5 rounded-2xl transition-all', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+        <div className={cn('p-5 rounded-2xl transition-all md:w-64', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
           <div className="flex items-center gap-2 text-red-500 mb-2">
             <ArrowDownRight className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest">Gastos</span>
@@ -157,7 +157,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
       </div>
 
       {/* Chart */}
-      <section className={cn('rounded-2xl p-6 transition-colors duration-500', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
+      <section className={cn('rounded-2xl p-6 transition-colors duration-500 md:max-w-2xl', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm')}>
         <div className="flex justify-between items-center mb-6">
           <div>
             <h3 className="text-lg font-bold">Flujo de Caja</h3>
@@ -168,7 +168,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
             ${(weekTotal || 0).toLocaleString('es-CO')}
           </div>
         </div>
-        <div className="h-48 w-full" style={{ minHeight: 192 }}>
+        <div className="h-48 md:h-[180px] w-full">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={weeklyData}>
               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
@@ -218,7 +218,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses }: Props) => {
       )}
 
       {/* Transaction list */}
-      <section className="space-y-4">
+      <section className="space-y-4 md:max-w-2xl">
         <div className="px-1">
           <h3 className="text-xl font-bold">Movimientos</h3>
         </div>

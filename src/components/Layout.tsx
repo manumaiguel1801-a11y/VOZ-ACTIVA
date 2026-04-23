@@ -70,7 +70,7 @@ export const Layout = ({
 
   return (
     <div className={cn(
-      "min-h-screen font-['Be_Vietnam_Pro'] pb-32 md:pb-0 transition-colors duration-500",
+      "min-h-screen overflow-x-hidden font-['Be_Vietnam_Pro'] pb-32 md:pb-0 transition-colors duration-500",
       isDarkMode ? "bg-[#0D0D0D] text-[#FDFBF0]" : "bg-[#FDFBF0] text-[#2e2f2d]"
     )}>
       <OnboardingManual
@@ -89,7 +89,7 @@ export const Layout = ({
 
       {/* ── Desktop sidebar ── */}
       <aside className={cn(
-        'hidden md:flex flex-col fixed left-0 top-0 h-screen w-60 z-50 border-r transition-colors duration-500',
+        'hidden md:flex flex-col fixed left-0 top-0 h-screen w-60 z-50 border-r overflow-hidden transition-colors duration-500',
         isDarkMode ? 'bg-[#0D0D0D] border-white/5' : 'bg-white border-black/5'
       )}>
         {/* Logo */}
@@ -258,7 +258,7 @@ export const Layout = ({
       </header>
 
       {/* ── Main content ── */}
-      <main className="pt-24 px-4 sm:px-6 max-w-md mx-auto w-full md:max-w-none md:mx-0 md:ml-60 md:px-8 md:py-8 md:pt-24">
+      <main className="pt-24 pb-4 px-4 sm:px-6 max-w-md mx-auto w-full md:max-w-none md:mx-0 md:w-auto md:ml-60 md:px-8 md:pt-24 md:pb-10">
         {children}
       </main>
 

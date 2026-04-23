@@ -217,7 +217,7 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 md:max-w-lg md:mx-auto">
       {/* Hidden file inputs */}
       {/* @ts-ignore — capture="user" is valid HTML */}
       <input
@@ -243,7 +243,7 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
           className="relative group"
           aria-label="Cambiar foto de perfil"
         >
-          <div className="rounded-full overflow-hidden border-4 border-[#B8860B] shadow-xl w-32 h-32">
+          <div className="rounded-full overflow-hidden border-4 border-[#B8860B] shadow-xl w-32 h-32 md:w-24 md:h-24">
             <Avatar
               photoURL={profile.photoURL}
               firstName={profile.firstName}
@@ -253,8 +253,8 @@ export const ProfileView = ({ isDarkMode, profile, onUpdate }: ProfileViewProps)
             />
           </div>
           {/* Camera badge */}
-          <div className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-[#B8860B] flex items-center justify-center shadow-lg border-2 border-[#FDFBF0] group-active:scale-90 transition-transform">
-            <Camera className="w-4 h-4 text-black" />
+          <div className="absolute bottom-0 right-0 w-9 h-9 md:w-7 md:h-7 rounded-full bg-[#B8860B] flex items-center justify-center shadow-lg border-2 border-[#FDFBF0] group-active:scale-90 transition-transform">
+            <Camera className="w-4 h-4 md:w-3.5 md:h-3.5 text-black" />
           </div>
         </button>
         <h2 className="mt-4 text-2xl font-bold font-['Plus_Jakarta_Sans']">

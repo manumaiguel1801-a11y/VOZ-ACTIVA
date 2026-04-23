@@ -305,7 +305,7 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile, user
   }));
 
   return (
-    <div className="space-y-10 pb-4">
+    <div className="space-y-10 pb-4 md:max-w-xl md:mx-auto">
 
       {/* Toast de categoría */}
       {toast && (
@@ -316,7 +316,7 @@ export const PassportView = ({ isDarkMode, sales, expenses, debts, profile, user
 
       {/* ── Hero: donut + score ── */}
       <section className="flex flex-col items-center pt-4">
-        <div className="relative w-56 h-56">
+        <div className="relative w-56 h-56 md:w-48 md:h-48">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <PieChart>
               <Pie
