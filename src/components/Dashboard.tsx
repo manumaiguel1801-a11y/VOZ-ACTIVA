@@ -140,111 +140,118 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
 
   return (
     <>
-      <div className="space-y-8">
-        {/* Hero Card */}
-        <section className={cn(
-          'rounded-xl p-8 shadow-[0_8px_32px_rgba(184,134,11,0.15)] relative overflow-hidden transition-all duration-500',
-          isDarkMode
-            ? 'bg-gradient-to-br from-[#B8860B] to-[#DAA520] text-black'
-            : 'bg-gradient-to-br from-[#B8860B] to-[#FFD700] text-black'
-        )}>
-          <div className="relative z-10">
-            <p className="text-sm opacity-90 mb-1">Saldo total</p>
-            <h2 className="text-5xl font-extrabold tracking-tight mb-6">
-              ${(totalBalance || 0).toLocaleString('es-CO')}
-            </h2>
-            <div className="flex gap-4">
-              <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
-                <p className="text-xs opacity-80 mb-1">Ingresos de hoy</p>
-                <p className="text-xl font-bold">+${(todayIncome || 0).toLocaleString('es-CO')}</p>
-              </div>
-              <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
-                <p className="text-xs opacity-80 mb-1">Gastos</p>
-                <p className="text-xl font-bold">-${(todayExpenses || 0).toLocaleString('es-CO')}</p>
+      {/* Desktop: 2-column grid. Mobile: single column. */}
+      <div className="md:grid md:grid-cols-2 md:gap-8 md:items-start">
+
+        {/* ── Left column: hero + CTAs + chart ── */}
+        <div className="space-y-8">
+          {/* Hero Card */}
+          <section className={cn(
+            'rounded-xl p-8 shadow-[0_8px_32px_rgba(184,134,11,0.15)] relative overflow-hidden transition-all duration-500',
+            isDarkMode
+              ? 'bg-gradient-to-br from-[#B8860B] to-[#DAA520] text-black'
+              : 'bg-gradient-to-br from-[#B8860B] to-[#FFD700] text-black'
+          )}>
+            <div className="relative z-10">
+              <p className="text-sm opacity-90 mb-1">Saldo total</p>
+              <h2 className="text-5xl font-extrabold tracking-tight mb-6">
+                ${(totalBalance || 0).toLocaleString('es-CO')}
+              </h2>
+              <div className="flex gap-4">
+                <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
+                  <p className="text-xs opacity-80 mb-1">Ingresos de hoy</p>
+                  <p className="text-xl font-bold">+${(todayIncome || 0).toLocaleString('es-CO')}</p>
+                </div>
+                <div className="flex-1 bg-black/5 backdrop-blur-md p-4 rounded-lg">
+                  <p className="text-xs opacity-80 mb-1">Gastos</p>
+                  <p className="text-xl font-bold">-${(todayExpenses || 0).toLocaleString('es-CO')}</p>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#DAA520] rounded-full blur-[80px] opacity-40" />
-        </section>
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#DAA520] rounded-full blur-[80px] opacity-40" />
+          </section>
 
-        {/* CTAs */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowSaleModal(true)}
-            className="flex-1 h-16 bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
-          >
-            <Plus className="w-5 h-5" />
-            Registrar Venta
-          </button>
-          <button
-            onClick={() => setShowExpenseModal(true)}
-            className={cn(
-              'flex-1 h-16 rounded-xl font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform border-2',
-              isDarkMode
-                ? 'bg-[#1A1A1A] border-red-500/30 text-red-400'
-                : 'bg-white border-red-200 text-red-500 shadow-sm'
-            )}
-          >
-            <TrendingDown className="w-5 h-5" />
-            Registrar Gasto
-          </button>
+          {/* CTAs */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowSaleModal(true)}
+              className="flex-1 h-16 bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] hover:opacity-90 transition-all"
+            >
+              <Plus className="w-5 h-5" />
+              Registrar Venta
+            </button>
+            <button
+              onClick={() => setShowExpenseModal(true)}
+              className={cn(
+                'flex-1 h-16 rounded-xl font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] hover:opacity-90 transition-all border-2',
+                isDarkMode
+                  ? 'bg-[#1A1A1A] border-red-500/30 text-red-400'
+                  : 'bg-white border-red-200 text-red-500 shadow-sm'
+              )}
+            >
+              <TrendingDown className="w-5 h-5" />
+              Registrar Gasto
+            </button>
+          </div>
+
+          {/* Weekly Chart */}
+          <section className={cn(
+            'rounded-lg p-6 transition-colors duration-500',
+            isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]'
+          )}>
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h3 className="text-lg font-bold">Ganancias de la semana</h3>
+                <p className={cn('text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
+                  Rendimiento semanal
+                </p>
+              </div>
+              <span className="text-[#B8860B] font-bold text-lg">
+                ${(weekTotal || 0).toLocaleString('es-CO')}
+              </span>
+            </div>
+            <div
+              className="w-full [&_svg]:outline-none [&_svg]:border-none [&>div]:outline-none [&>div]:border-none"
+              style={{ height: 160, outline: 'none', border: 'none' }}
+            >
+              <ResponsiveContainer width="100%" height={160} minWidth={0} style={{ outline: 'none', border: 'none' }}>
+                <BarChart data={weeklyData} style={{ outline: 'none', border: 'none' }} barCategoryGap="20%">
+                  <Bar dataKey="value" radius={[10, 10, 0, 0]} activeBar={false} isAnimationActive={false}>
+                    {weeklyData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={
+                          entry.value > 0 && entry.value === maxBar
+                            ? '#FFD700'
+                            : entry.value > maxBar * 0.6
+                              ? '#DAA520'
+                              : isDarkMode ? '#333' : '#ddddd9'
+                        }
+                      />
+                    ))}
+                  </Bar>
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fontWeight: 500, fill: isDarkMode ? '#FDFBF0' : '#2e2f2d', opacity: 0.6 }}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
         </div>
 
-        {/* Weekly Chart */}
-        <section className={cn(
-          'rounded-lg p-6 transition-colors duration-500',
-          isDarkMode ? 'bg-[#1A1A1A]' : 'bg-[#f1f1ee]'
-        )}>
-          <div className="flex justify-between items-end mb-6">
-            <div>
-              <h3 className="text-lg font-bold">Ganancias de la semana</h3>
-              <p className={cn('text-sm', isDarkMode ? 'text-[#FDFBF0]/60' : 'text-[#5b5c5a]')}>
-                Rendimiento semanal
-              </p>
-            </div>
-            <span className="text-[#B8860B] font-bold text-lg">
-              ${(weekTotal || 0).toLocaleString('es-CO')}
-            </span>
-          </div>
-          <div
-            className="w-full [&_svg]:outline-none [&_svg]:border-none [&>div]:outline-none [&>div]:border-none"
-            style={{ height: 160, outline: 'none', border: 'none' }}
-          >
-            <ResponsiveContainer width="100%" height={160} minWidth={0} style={{ outline: 'none', border: 'none' }}>
-              <BarChart data={weeklyData} style={{ outline: 'none', border: 'none' }} barCategoryGap="20%">
-                <Bar dataKey="value" radius={[10, 10, 0, 0]} activeBar={false} isAnimationActive={false}>
-                  {weeklyData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={
-                        entry.value > 0 && entry.value === maxBar
-                          ? '#FFD700'
-                          : entry.value > maxBar * 0.6
-                            ? '#DAA520'
-                            : isDarkMode ? '#333' : '#ddddd9'
-                      }
-                    />
-                  ))}
-                </Bar>
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 12, fontWeight: 500, fill: isDarkMode ? '#FDFBF0' : '#2e2f2d', opacity: 0.6 }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        {/* Movimientos */}
-        <section className="space-y-4">
+        {/* ── Right column: movements ── */}
+        <div className="space-y-4 mt-8 md:mt-0">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold">Movimientos recientes</h3>
             <button
-            onClick={() => setShowAllMovements(true)}
-            className="text-[#B8860B] font-bold text-sm"
-          >Ver todo</button>
+              onClick={() => setShowAllMovements(true)}
+              className="text-[#B8860B] font-bold text-sm hover:underline"
+            >
+              Ver todo
+            </button>
           </div>
 
           {/* Time filter pills */}
@@ -295,7 +302,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                       key={`s-${s.id}`}
                       onClick={() => setSelectedSale(s)}
                       className={cn(
-                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
+                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] hover:scale-[1.01] transition-all duration-200 text-left',
                         isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
                       )}
                     >
@@ -324,7 +331,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
                       key={`e-${e.id}`}
                       onClick={() => setSelectedExpense(e)}
                       className={cn(
-                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] transition-all duration-200 text-left',
+                        'w-full p-5 rounded-lg flex items-center justify-between shadow-sm active:scale-[0.98] hover:scale-[1.01] transition-all duration-200 text-left',
                         isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white'
                       )}
                     >
@@ -350,7 +357,7 @@ export const Dashboard = ({ isDarkMode, userId, sales, expenses }: Props) => {
               })}
             </div>
           )}
-        </section>
+        </div>
       </div>
 
       {showSaleModal && (
