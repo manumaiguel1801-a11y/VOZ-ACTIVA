@@ -10,7 +10,12 @@ import {
   HelpCircle,
   MessageSquare,
   Users,
+  MessageCircle,
+  Bell,
+  LogOut,
 } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 import { cn } from '../lib/utils';
 import { Tab, Debt, InventoryProduct } from '../types';
 import { ChatBubble } from './ChatBubble';
@@ -209,10 +214,29 @@ export const Layout = ({
           <h1 className="font-['Plus_Jakarta_Sans'] font-bold text-xl tracking-tight text-[#B8860B]">
             {userName}
           </h1>
+          {activeTab === 'finanzas' && (
+            <p className="text-sm text-gray-400 mt-0.5">Resumen de tus finanzas</p>
+          )}
         </div>
 
         {/* Right: action buttons */}
         <div className="flex items-center gap-1">
+          {/* Desktop-only icons */}
+          <div className="hidden md:flex items-center gap-3 mr-2">
+            <button onClick={() => setShowSuggestions(true)} className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+              <MessageCircle className="w-5 h-5" />
+            </button>
+            <button onClick={() => setShowManual(true)} className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            <button className="relative text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+              <Bell className="w-5 h-5" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#B8860B]" />
+            </button>
+            <button onClick={() => signOut(auth)} className="text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
           <button
             onClick={() => setShowSuggestions(true)}
             className={cn(

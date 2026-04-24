@@ -130,9 +130,8 @@ export default function App() {
               isDarkMode={isDarkMode}
               sales={sales}
               expenses={expenses}
+              userId={user.uid}
               userName={profile?.firstName}
-              onAddSale={() => setActiveTab('inventario')}
-              onAddExpense={() => setActiveTab('camara')}
             />
           </motion.div>
         )}

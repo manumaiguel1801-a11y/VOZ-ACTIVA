@@ -2,14 +2,14 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowUpRight, ArrowDownRight, BarChart2, TrendingUp, TrendingDown,
   ShoppingBag, ChevronRight, ChevronDown, Send, MessageCircle, Lightbulb,
-  Wallet, Bell, LogOut, HelpCircle, Calendar,
+  Wallet, Calendar,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from 'recharts';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebase';
 import { cn } from '../lib/utils';
 import { Sale, Expense, getSaleLabel } from '../types';
 import { MovementDetailModal } from './MovementDetailModal';
+import { RegisterSaleModal } from './RegisterSaleModal';
+import { RegisterExpenseModal } from './RegisterExpenseModal';
 
 const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -29,8 +29,8 @@ function formatTime(date: Date): string {
   if (d.getTime() === yesterday.getTime()) return `Ayer, ${t}`;
   return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + `, ${t}`;
 }
-function fmt(v: number): string {
-  return '$' + v.toLocaleString('es-CO');
+function fmt(v: number | null | undefined): string {
+  return '$' + (v ?? 0).toLocaleString('es-CO');
 }
 function fmtY(v: number): string {
   if (v === 0) return '$0';
@@ -60,19 +60,19 @@ interface Props {
   isDarkMode: boolean;
   sales: Sale[];
   expenses: Expense[];
+  userId: string;
   userName?: string;
-  onAddSale?: () => void;
-  onAddExpense?: () => void;
 }
 
 type Movement =
   | { kind: 'sale'; date: Date; data: Sale }
   | { kind: 'expense'; date: Date; data: Expense };
 
-export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, onAddExpense }: Props) => {
+export const FinanceView = ({ isDarkMode, sales, expenses, userId, userName }: Props) => {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-  const [visibleCount, setVisibleCount] = useState(6);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
 
   const cardBase = cn('rounded-2xl shadow-sm p-6', isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white');
   const muted = isDarkMode ? 'text-white/40' : 'text-[#5b5c5a]/60';
@@ -161,29 +161,6 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      {/* ── Header (desktop only) ────────────────────────────────────────── */}
-      <div className="hidden md:flex items-center justify-between py-1">
-        <div>
-          <h1 className="text-2xl font-black">{userName ? `Hola, ${userName}` : 'Hola'}</h1>
-          <p className={cn('text-sm mt-0.5', muted)}>Resumen de tus finanzas</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className={cn('transition-colors', isDarkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-700')}>
-            <MessageCircle className="w-5 h-5" />
-          </button>
-          <button className={cn('transition-colors', isDarkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-700')}>
-            <HelpCircle className="w-5 h-5" />
-          </button>
-          <button className={cn('relative transition-colors', isDarkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-700')}>
-            <Bell className="w-5 h-5" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#B8860B]" />
-          </button>
-          <button onClick={() => signOut(auth)} className={cn('transition-colors', isDarkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-700')}>
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
       {/* ── Row 1: Balance + Actions ──────────────────────────────────────── */}
       <div className="flex flex-col gap-4 md:grid" style={{ gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)' }}>
 
@@ -208,7 +185,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
         {/* Action buttons */}
         <div className="flex flex-row md:flex-col gap-3">
           <button
-            onClick={onAddSale}
+            onClick={() => setShowSaleModal(true)}
             className="flex-1 flex items-center justify-between px-5 py-4 rounded-xl text-white font-bold text-sm active:scale-[0.98] transition-all duration-200"
             style={{ background: '#B8860B' }}
           >
@@ -216,7 +193,7 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
-            onClick={onAddExpense}
+            onClick={() => setShowExpenseModal(true)}
             className={cn(
               'flex-1 flex items-center justify-between px-5 py-4 rounded-xl font-bold text-sm border-2 border-[#B8860B] text-[#B8860B] active:scale-[0.98] transition-all duration-200',
               isDarkMode ? 'bg-transparent' : 'bg-white'
@@ -270,8 +247,8 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
               <span className={cn('text-xs', muted)}>Gastos</span>
             </div>
           </div>
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <div className="h-[220px] w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={weeklyData} barCategoryGap="20%" barGap={2}>
                 <CartesianGrid vertical={false} stroke={isDarkMode ? '#2a2a2a' : '#f0f0ee'} />
                 <XAxis
@@ -319,10 +296,10 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
           ) : (
             <>
               <div
-                className="flex-1 overflow-y-auto space-y-1 max-h-[260px] md:max-h-none"
-                style={{ scrollbarWidth: 'thin' }}
+                className="overflow-y-auto max-h-[520px] space-y-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#B8860B]/60 [&::-webkit-scrollbar-track]:bg-transparent"
+                style={{ scrollbarWidth: 'thin', scrollbarColor: '#B8860B60 transparent' }}
               >
-                {allMovements.slice(0, visibleCount).map((m) => {
+                {allMovements.map((m) => {
                   const isSale = m.kind === 'sale';
                   const label = isSale ? getSaleLabel(m.data as Sale) : (m.data as Expense).concept;
                   const amount = isSale ? (m.data as Sale).total : (m.data as Expense).amount;
@@ -362,14 +339,6 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
                   );
                 })}
               </div>
-              {visibleCount < allMovements.length && (
-                <button
-                  onClick={() => setVisibleCount(v => v + 6)}
-                  className="mt-3 w-full flex items-center justify-center gap-1 text-xs font-bold text-[#B8860B] py-2"
-                >
-                  Cargar más <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-              )}
             </>
           )}
         </div>
@@ -389,6 +358,12 @@ export const FinanceView = ({ isDarkMode, sales, expenses, userName, onAddSale, 
       </div>
 
       {/* Modals */}
+      {showSaleModal && (
+        <RegisterSaleModal userId={userId} isDarkMode={isDarkMode} onClose={() => setShowSaleModal(false)} />
+      )}
+      {showExpenseModal && (
+        <RegisterExpenseModal userId={userId} isDarkMode={isDarkMode} onClose={() => setShowExpenseModal(false)} />
+      )}
       {selectedSale && (
         <MovementDetailModal item={{ kind: 'sale', data: selectedSale }} isDarkMode={isDarkMode} onClose={() => setSelectedSale(null)} />
       )}
