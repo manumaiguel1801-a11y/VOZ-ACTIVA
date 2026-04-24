@@ -156,6 +156,10 @@ export default function App() {
               isDarkMode={isDarkMode}
               profile={profile}
               onUpdate={(updated) => setProfile({ ...profile, ...updated })}
+              sales={sales}
+              expenses={expenses}
+              debts={debts}
+              onNavigate={setActiveTab}
             />
           </motion.div>
         )}
