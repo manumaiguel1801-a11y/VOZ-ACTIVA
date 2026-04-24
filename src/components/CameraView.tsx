@@ -819,7 +819,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           className={cn('w-full h-14 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all duration-300',
             isSaving ? isDarkMode ? 'bg-white/10 text-white/40' : 'bg-black/10 text-black/30'
               : ventasRows.some((r) => r.nombre.trim()) ? 'bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98]'
-              : isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed')}>
+                : isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed')}>
           {isSaving ? <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</> : <><CheckCircle2 className="w-5 h-5" /> Confirmar ventas</>}
         </button>
       </div>
@@ -915,7 +915,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
           className={cn('w-full h-14 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all duration-300',
             isSaving ? isDarkMode ? 'bg-white/10 text-white/40' : 'bg-black/10 text-black/30'
               : stockRows.some((r) => r.nombre.trim()) ? 'bg-gradient-to-r from-[#B8860B] to-[#FFD700] text-black shadow-lg active:scale-[0.98]'
-              : isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed')}>
+                : isDarkMode ? 'bg-white/8 text-white/25 cursor-not-allowed' : 'bg-black/8 text-black/25 cursor-not-allowed')}>
           {isSaving ? <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</> : <><TrendingDown className="w-5 h-5" /> Confirmar compra</>}
         </button>
       </div>
@@ -1508,18 +1508,18 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
     const avgDebt = displayedDebts.length > 0 ? Math.round(activeTotal / displayedDebts.length) : 0;
 
     const meDebenCount = debts.filter(d => d.type === 'me-deben' && (d.status ?? 'pendiente') !== 'pagada').length;
-    const deboCount    = debts.filter(d => d.type === 'debo'     && (d.status ?? 'pendiente') !== 'pagada').length;
+    const deboCount = debts.filter(d => d.type === 'debo' && (d.status ?? 'pendiente') !== 'pagada').length;
 
     const isFrequent = (name: string) =>
       debts.filter(d => d.name.toLowerCase().trim() === name.toLowerCase().trim()).length > 2;
 
-    const muted  = isDarkMode ? 'text-white/40' : 'text-[#5b5c5a]/60';
+    const muted = isDarkMode ? 'text-white/40' : 'text-[#5b5c5a]/60';
     const cardBg = isDarkMode ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm';
 
     const tabs = [
       { label: '↗ Me deben', key: 'me-deben', active: !showHistory && debtType === 'me-deben' },
-      { label: '↙ Debo',     key: 'debo',     active: !showHistory && debtType === 'debo' },
-      { label: '🕐 Historial',key: 'historial',active: showHistory },
+      { label: '↙ Debo', key: 'debo', active: !showHistory && debtType === 'debo' },
+      { label: '🕐 Historial', key: 'historial', active: showHistory },
     ];
 
     return (
@@ -1535,7 +1535,7 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
             )}
           >
             {showDebtForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showDebtForm ? 'Cancelar' : '+ Agregar deuda o fiado'}
+            {showDebtForm ? 'Cancelar' : ' Agregar deuda o fiado'}
           </button>
         </div>
 
@@ -1686,11 +1686,11 @@ export const CameraView = ({ isDarkMode, debts, userId, inventory }: Props) => {
                   </thead>
                   <tbody>
                     {displayedDebts.map((debt, idx) => {
-                      const pending  = debt.amount - (debt.amountPaid ?? 0);
+                      const pending = debt.amount - (debt.amountPaid ?? 0);
                       const isMeDeben = debt.type === 'me-deben';
-                      const freq     = isFrequent(debt.name);
-                      const date     = getDebtDate(debt);
-                      const isLast   = idx === displayedDebts.length - 1;
+                      const freq = isFrequent(debt.name);
+                      const date = getDebtDate(debt);
+                      const isLast = idx === displayedDebts.length - 1;
                       return (
                         <tr
                           key={debt.id}
