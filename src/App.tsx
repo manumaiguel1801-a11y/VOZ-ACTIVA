@@ -126,7 +126,14 @@ export default function App() {
         )}
         {activeTab === 'finanzas' && (
           <motion.div key="finanzas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <FinanceView isDarkMode={isDarkMode} sales={sales} expenses={expenses} />
+            <FinanceView
+              isDarkMode={isDarkMode}
+              sales={sales}
+              expenses={expenses}
+              userName={profile?.firstName}
+              onAddSale={() => setActiveTab('inventario')}
+              onAddExpense={() => setActiveTab('camara')}
+            />
           </motion.div>
         )}
         {activeTab === 'camara' && (
