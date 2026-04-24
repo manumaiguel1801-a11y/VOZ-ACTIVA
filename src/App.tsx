@@ -121,7 +121,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         {activeTab === 'inicio' && (
           <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <Dashboard isDarkMode={isDarkMode} userId={user.uid} sales={sales} expenses={expenses} />
+            <Dashboard isDarkMode={isDarkMode} userId={user.uid} sales={sales} expenses={expenses} inventory={inventory} debts={debts} onNavigate={setActiveTab} />
           </motion.div>
         )}
         {activeTab === 'finanzas' && (
